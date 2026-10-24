@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn forwarded_text_is_json_escaped() {
-        let cmd = monitoros_core::remote::RemoteCommand::Text { value: "\"); alert(1); (\"".into() };
+        let cmd = monitoros_core::remote::RemoteCommand::Text { value: "\"); alert(1); (\"".into(), submit: false };
         let json = serde_json::to_string(&cmd).unwrap();
         assert!(json.contains(r#"\"); alert(1); (\""#), "{json}");
     }

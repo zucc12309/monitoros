@@ -12,7 +12,8 @@ export type RemoteCommand =
   | { type: "media"; action: "play-pause" | "stop" | "next" | "previous" }
   | { type: "seek"; deltaSec: number }
   | { type: "volume"; action: "up" | "down" | "mute" }
-  | { type: "text"; value: string }
+  /** Full contents of the phone's text box (replaces the TV field); submit = Send/Go pressed. */
+  | { type: "text"; value: string; submit?: boolean }
   | { type: "pointer"; dx: number; dy: number; click?: boolean }
   | { type: "scroll"; dx: number; dy: number }
   | { type: "mode"; target: "tv" | "desktop" | "toggle" }
@@ -71,7 +72,7 @@ export function validateCommand(raw: unknown): RemoteCommand {
       if (typeof raw.value !== "string" || raw.value.length > MAX_TEXT_LEN) throw new Error("invalid text");
       // Strip control characters; remote text is typed into search fields only.
       const value = raw.value.replace(/[\u0000-\u001f\u007f]/g, "");
-      return { type: "text", value };
+      return raw.submit === true ? { type: "text", value, submit: true } : { type: "text", value };
     }
     case "pointer":
       if (!finite(raw.dx) || !finite(raw.dy) || Math.abs(raw.dx) > MAX_POINTER_DELTA || Math.abs(raw.dy) > MAX_POINTER_DELTA)

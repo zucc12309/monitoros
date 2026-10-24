@@ -7,6 +7,8 @@ let conn: RemoteConnection | null = null;
 /** Touchpad mode: "swipe" = D-pad gestures, "cursor" = the computer's mouse (trackpad). */
 let padMode: "swipe" | "cursor" = "swipe";
 let padModeLocked = false; // user chose a mode explicitly
+/** What the remote is driving (from the TV's status). */
+let control: "monitoros" | "page" | "system" = "monitoros";
 
 function setPadMode(m: "swipe" | "cursor") {
   padMode = m;
@@ -134,13 +136,21 @@ function renderRemote() {
       <button id="vup" aria-label="Volume up">Vol +</button>
     </div>
     <form id="kb" class="kb">
-      <input id="text" placeholder="Type to search on TV" autocomplete="off" autocapitalize="off" enterkeyhint="send" />
-      <button class="primary">Send</button>
+      <input id="text" type="search" placeholder="Type to search on the TV" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" />
+      <button class="primary">Search</button>
     </form>
     <footer><span id="lat" class="muted"></span><button id="unpair" class="link">Unpair this phone</button></footer>
     <div id="toast" class="toast"></div>`);
 
   app.querySelectorAll<HTMLButtonElement>("[data-nav]").forEach((b) => (b.onclick = () => send({ type: "nav", key: b.dataset.nav as NavKey })));
+  // Search: focus the TV's search box AND open the phone keyboard (focus must
+  // happen inside this tap for iOS to show the keyboard).
+  $('[data-nav="search"]').onclick = () => {
+    send({ type: "nav", key: "search" });
+    const input = $<HTMLInputElement>("#text");
+    input.focus();
+    input.select();
+  };
   $("#pp").onclick = () => send({ type: "media", action: "play-pause" });
   $("#rew").onclick = () => send({ type: "seek", deltaSec: -10 });
   $("#fwd").onclick = () => send({ type: "seek", deltaSec: 10 });
@@ -154,11 +164,21 @@ function renderRemote() {
     setToken(null);
     renderPairing("Unpaired. You can also revoke phones in Settings › iPhone Remote on the TV.");
   };
+  const input = $<HTMLInputElement>("#text");
+  let typing = 0;
+  // Mirror what's typed into the TV's search box (debounced). Not for other
+  // apps: there text can only be typed, not replaced, so it goes on Search.
+  input.oninput = () => {
+    clearTimeout(typing);
+    if (control === "system") return;
+    typing = window.setTimeout(() => conn?.send({ type: "text", value: input.value.slice(0, 256) }), 250);
+  };
   $<HTMLFormElement>("#kb").onsubmit = (e) => {
     e.preventDefault();
-    const input = $<HTMLInputElement>("#text");
-    if (input.value) send({ type: "text", value: input.value.slice(0, 256) });
+    clearTimeout(typing);
+    send({ type: "text", value: input.value.slice(0, 256), submit: true });
     input.value = "";
+    input.blur(); // close the keyboard
   };
   $("#padmode").onclick = (e) => {
     e.stopPropagation();
@@ -262,6 +282,7 @@ function setState(s: ConnState) {
 }
 
 function setStatus(st: RemoteStatus) {
+  if (st.control) control = st.control;
   const now = document.getElementById("now");
   const mode = document.getElementById("mode");
   if (mode) mode.textContent = st.mode === "tv" ? "Switch to Desktop" : "Switch to TV";

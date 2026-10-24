@@ -58,7 +58,13 @@ pub enum RemoteCommand {
         delta_sec: f64,
     },
     Volume { action: VolumeAction },
-    Text { value: String },
+    /// The full text of the phone's text box (replaces the TV field);
+    /// `submit` = the user pressed Send/Go.
+    Text {
+        value: String,
+        #[serde(default)]
+        submit: bool,
+    },
     Pointer {
         dx: f64,
         dy: f64,
@@ -120,11 +126,11 @@ impl RemoteCommand {
             {
                 Err(CommandError::OutOfRange)
             }
-            RemoteCommand::Text { value } => {
+            RemoteCommand::Text { value, submit } => {
                 if value.chars().count() > MAX_TEXT_LEN {
                     return Err(CommandError::OutOfRange);
                 }
-                Ok(RemoteCommand::Text { value: value.chars().filter(|c| !c.is_control()).collect() })
+                Ok(RemoteCommand::Text { value: value.chars().filter(|c| !c.is_control()).collect(), submit })
             }
             other => Ok(other),
         }
@@ -234,7 +240,9 @@ mod tests {
     #[test]
     fn strips_control_chars() {
         let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"text","value":"dune\u0000\n"}}"#).unwrap();
-        assert_eq!(e.command, RemoteCommand::Text { value: "dune".into() });
+        assert_eq!(e.command, RemoteCommand::Text { value: "dune".into(), submit: false });
+        let e = parse_envelope(r#"{"seq":2,"sentAt":1,"command":{"type":"text","value":"dune","submit":true}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Text { value: "dune".into(), submit: true });
     }
 
     #[test]

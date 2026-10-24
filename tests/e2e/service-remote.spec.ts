@@ -135,6 +135,54 @@ test("typed text from the phone lands in the focused search box", async ({ page 
   await expect(page.locator("#search")).toHaveValue("Kalki");
 });
 
+// YouTube-like: search input inside a form, nothing focused on the page.
+const YT_LIKE = `<!doctype html><html><body>
+<form id="f" action="/results"><input id="search" name="search_query" placeholder="Search"><button id="sb" aria-label="Search">🔍</button></form>
+<a href="#v1" id="v1">Video 1</a>
+<script>
+  window.log = [];
+  document.getElementById('f').addEventListener('submit', e => { e.preventDefault(); window.log.push('search:' + document.getElementById('search').value); });
+  document.getElementById('search').addEventListener('input', e => window.log.push('input:' + e.target.value));
+</script></body></html>`;
+
+// Netflix-like: the input only exists after the magnifier is clicked; Enter searches.
+const NF_LIKE = `<!doctype html><html><body>
+<div id="bar"><button data-uia="search-box-launcher" id="launch" aria-label="Search">🔍</button></div>
+<script>
+  window.log = [];
+  document.getElementById('launch').addEventListener('click', () => setTimeout(() => {
+    const i = document.createElement('input');
+    i.setAttribute('data-uia', 'search-box-input'); i.id = 'q';
+    i.addEventListener('keydown', e => e.key === 'Enter' && window.log.push('search:' + i.value));
+    document.getElementById('bar').appendChild(i);
+  }, 150));
+</script></body></html>`;
+
+async function openFixture(page: Page, host: string, html: string) {
+  await page.addInitScript(SCRIPT);
+  await page.route(`https://${host}/**`, (r) => r.fulfill({ contentType: "text/html", body: html }));
+  await page.goto(`https://${host}/`);
+}
+
+test("typing finds the site's search box, mirrors the phone, and Send searches (YouTube-like)", async ({ page }) => {
+  await openFixture(page, "yt.test", YT_LIKE);
+  await remote(page, { type: "text", value: "kal" }); // nothing focused on the page yet
+  await remote(page, { type: "text", value: "kalki" }); // replaces, doesn't append
+  await expect(page.locator("#search")).toHaveValue("kalki");
+  await remote(page, { type: "text", value: "kalki 2898", submit: true });
+  await expect.poll(() => log(page)).toContain("search:kalki 2898");
+  expect(await log(page)).toContain("input:kal");
+});
+
+test("typing opens a collapsed search box first (Netflix-like) and Enter searches", async ({ page }) => {
+  await openFixture(page, "nf.test", NF_LIKE);
+  await remote(page, { type: "nav", key: "search" });
+  await expect(page.locator("#q")).toBeFocused();
+  await remote(page, { type: "text", value: "stranger things", submit: true });
+  await expect(page.locator("#q")).toHaveValue("stranger things");
+  await expect.poll(() => log(page)).toContain("search:stranger things");
+});
+
 test("Back goes back inside the service, and from its first page returns to MonitorOS", async ({ page }) => {
   await open(page);
   await page.route("https://monitoros.invalid/**", (r) => r.fulfill({ body: "closed" }));

@@ -24,6 +24,11 @@ describe("remote command validation", () => {
     expect(() => validateCommand([])).toThrow();
   });
 
+  it("carries the submit flag on text", () => {
+    expect(validateCommand({ type: "text", value: "kalki", submit: true })).toEqual({ type: "text", value: "kalki", submit: true });
+    expect(validateCommand({ type: "text", value: "kal", submit: "yes" })).toEqual({ type: "text", value: "kal" });
+  });
+
   it("strips control characters from text", () => {
     expect(validateCommand({ type: "text", value: "dune\u0000\n" })).toEqual({ type: "text", value: "dune" });
   });

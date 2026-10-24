@@ -178,6 +178,74 @@
     return false;
   }
 
+  // ---------- typing into the site's search ----------
+  const isTextField = (el) =>
+    !!el && ((el.tagName === "INPUT" && !/^(button|submit|checkbox|radio|range|hidden|file|image|reset|color)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable);
+  const SEARCH_INPUTS = [
+    'input[name="search_query"]', // YouTube
+    '[data-uia="search-box-input"]', // Netflix
+    'input[type="search"]',
+    'input[name*="search" i]',
+    'input[id*="search" i]',
+    'input[placeholder*="search" i]',
+    'input[aria-label*="search" i]',
+  ];
+  const SEARCH_LAUNCHERS = [
+    '[data-uia="search-box-launcher"]', // Netflix magnifier
+    'button[aria-label*="search" i]',
+    'a[aria-label*="search" i]',
+    'a[href*="/search"]',
+    '[role="button"][aria-label*="search" i]',
+  ];
+  const findVisible = (sels) => {
+    for (const sel of sels) for (const el of document.querySelectorAll(sel)) if (visible(el, 0)) return el;
+    return null;
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** The field typed text should go to; opens a collapsed search box if needed. */
+  async function searchField() {
+    const active = document.activeElement;
+    if (isTextField(active)) return active;
+    let field = findVisible(SEARCH_INPUTS);
+    if (!field) {
+      const launcher = findVisible(SEARCH_LAUNCHERS);
+      if (launcher) {
+        clickEl(launcher);
+        for (let i = 0; i < 10 && !field; i++) {
+          await sleep(100);
+          field = findVisible(SEARCH_INPUTS);
+        }
+      }
+    }
+    if (field) {
+      field.focus();
+      setFocus(field);
+    }
+    return field;
+  }
+
+  function setFieldText(el, value) {
+    if (el.isContentEditable) {
+      el.textContent = value;
+    } else {
+      // Native setter so React/Vue/Lit-controlled inputs notice the change.
+      const proto = el.tagName === "INPUT" ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+    }
+    el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function submitField(el) {
+    sendKey("ok", el); // most sites (YouTube, Netflix) search on Enter
+    const form = el.closest("form");
+    if (form) {
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    }
+  }
+
   // ---------- command handler ----------
   window.__monitorosRemote = (cmd) => {
     const video = activeVideo();
@@ -199,8 +267,7 @@
           return sendKey("ok");
         }
         if (k === "search") {
-          const s = document.querySelector('input[type="search"], input[name*="search" i], [aria-label*="search" i], [data-uia*="search" i]');
-          if (s) return clickEl(s), s.focus();
+          searchField();
           return;
         }
         // During playback the arrows belong to the player (seek / volume).
@@ -249,14 +316,12 @@
         return;
       }
       case "text": {
-        const el = document.activeElement;
-        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
-          // Use the native setter so React/Vue-controlled inputs notice the change.
-          const proto = el.tagName === "INPUT" ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
-          Object.getOwnPropertyDescriptor(proto, "value").set.call(el, el.value + cmd.value);
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-        return;
+        // The phone sends its whole text box: mirror it, then search on Send.
+        return searchField().then((el) => {
+          if (!el) return hint("No search box on this page");
+          setFieldText(el, cmd.value);
+          if (cmd.submit) submitField(el);
+        });
       }
     }
   };

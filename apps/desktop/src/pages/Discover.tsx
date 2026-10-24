@@ -47,7 +47,8 @@ export function SearchPage({ initial }: { initial?: string }) {
   // Text typed on the iPhone remote lands here.
   useEffect(() => {
     let un: (() => void) | undefined;
-    listen<{ type: string; value?: string }>("remote://command", (c) => c.type === "text" && setQ((v) => v + (c.value ?? ""))).then((u) => (un = u));
+    // The phone sends its whole text box; mirror it (search runs live).
+    listen<{ type: string; value?: string }>("remote://command", (c) => c.type === "text" && setQ(c.value ?? "")).then((u) => (un = u));
     return () => un?.();
   }, []);
 

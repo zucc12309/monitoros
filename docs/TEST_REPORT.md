@@ -6,11 +6,11 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 
 | Suite | Command | Result |
 |---|---|---|
-| TS unit + security (Vitest) | `npm test` | **100 / 100** across 8 files |
-| Rust unit + integration | `cargo test --workspace` | **61 / 61** |
+| TS unit + security (Vitest) | `npm test` | **101 / 101** across 8 files |
+| Rust unit + integration | `cargo test --workspace` | **62 / 62** |
 | Rust lint | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | TS typecheck | `tsc --noEmit -p apps/desktop` and root | clean |
-| E2E (Playwright, Chrome) | `npm run test:e2e` | **18 / 18** |
+| E2E (Playwright, Chrome) | `npm run test:e2e` | **22 / 22** |
 | Windows cross-check | `cargo check --target x86_64-pc-windows-msvc -p platform-windows -p media-engine -p monitoros-core` | compiles |
 | macOS release bundle | `scripts/macos/build.sh` | `MonitorOS.app` (19 MB), DMG (7 MB) |
 
@@ -68,7 +68,9 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
    - Chrome mode uses its own profile/instance (honours `--start-fullscreen`, never more than one window)
    - focus is queried live for routing
 9. **D-pad on live netflix.com** (signed-out landing page, checked ad hoc in Chrome): moves across real title buttons and FAQ items. It no longer stalls on off-screen rows or jumps rows on Left/Right.
-10. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
+10. **YouTube was blank in the in-app window.** Tauri's `freezePrototype` is injected into every webview. Reproduced in WebKit against live youtube.com (0 chars rendered, "Attempted to assign to readonly property"); now applied to the main UI only.
+11. **Couldn't type from the remote.** Text was dropped unless a field was already focused, and was never submitted. Now the page's search box is found (or opened via its magnifier), the phone box mirrors live, and Send submits. Checked on live youtube.com in WebKit: Search focused `search_query`, typing mirrored, and Send loaded `/results?search_query=kalki+2898+trailer` with 26 videos.
+12. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
 
 ## DRM check (macOS 26.5, WKWebView in a third-party app)
 

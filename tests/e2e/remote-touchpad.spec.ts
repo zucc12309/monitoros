@@ -136,3 +136,28 @@ test("Full screen button sends the fullscreen command", async ({ page }) => {
   await page.getByRole("button", { name: "Full screen" }).click();
   expect((await sent(page)).at(-1)).toEqual({ type: "fullscreen" });
 });
+
+test("Search opens the phone keyboard, typing mirrors live, Search submits", async ({ page }) => {
+  await openRemote(page, { mode: "tv", control: "page", service: { open: true } });
+  await page.getByRole("button", { name: "Search", exact: true }).first().click();
+  const box = page.getByPlaceholder("Type to search on the TV");
+  await expect(box).toBeFocused(); // iOS shows the keyboard for a focused field
+  expect((await sent(page)).at(-1)).toEqual({ type: "nav", key: "search" });
+
+  await box.pressSequentially("kalki", { delay: 40 });
+  await expect.poll(async () => (await sent(page)).filter((c) => c.type === "text").at(-1)).toEqual({ type: "text", value: "kalki" });
+  await box.press("Enter");
+  expect((await sent(page)).at(-1)).toEqual({ type: "text", value: "kalki", submit: true });
+  await expect(box).toHaveValue("");
+  await expect(box).not.toBeFocused(); // keyboard closed
+});
+
+test("in other apps typing is sent only on Search (it can't be replaced there)", async ({ page }) => {
+  await openRemote(page, { mode: "desktop", control: "system" });
+  const box = page.getByPlaceholder("Type to search on the TV");
+  await box.fill("hello");
+  await page.waitForTimeout(400);
+  expect((await sent(page)).filter((c) => c.type === "text")).toEqual([]);
+  await box.press("Enter");
+  expect((await sent(page)).at(-1)).toEqual({ type: "text", value: "hello", submit: true });
+});

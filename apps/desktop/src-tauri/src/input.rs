@@ -135,7 +135,15 @@ pub fn plan(cmd: &RemoteCommand) -> Vec<Action> {
                 vec![Scroll(x, y)]
             }
         }
-        RemoteCommand::Text { value } if !value.is_empty() => vec![Text(value.clone())],
+        // Other apps can't be "replaced into", so text is only typed on Send.
+        RemoteCommand::Text { value, submit: true } => {
+            let mut v = vec![];
+            if !value.is_empty() {
+                v.push(Text(value.clone()));
+            }
+            v.push(Tap(KeyName::Enter));
+            v
+        }
         RemoteCommand::Fullscreen => vec![fullscreen_combo()],
         _ => vec![],
     }
@@ -297,6 +305,7 @@ mod tests {
     #[test]
     fn mode_and_volume_are_not_injected() {
         assert!(plan(&RemoteCommand::Ping).is_empty());
-        assert!(plan(&RemoteCommand::Text { value: String::new() }).is_empty());
+        assert!(plan(&RemoteCommand::Text { value: "live".into(), submit: false }).is_empty(), "live mirroring isn't typed into other apps");
+        assert_eq!(plan(&RemoteCommand::Text { value: "kalki".into(), submit: true }), vec![Action::Text("kalki".into()), Action::Tap(KeyName::Enter)]);
     }
 }
