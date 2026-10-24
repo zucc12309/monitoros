@@ -254,7 +254,7 @@ async fn ws_session(s: AppState, socket: WebSocket) {
     let _ = s.events.send(ServerEvent::DeviceConnected { device_id: device.id.clone(), name: device.name.clone() }).await;
 
     let mut replay = ReplayGuard::default();
-    let mut limiter = RateLimiter::new(30, 20, now_ms());
+    let mut limiter = RateLimiter::new(60, 40, now_ms()); // touchpad cursor sends ~25 msgs/s
     let mut status = s.status.clone();
     let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
     let mut last_pong = tokio::time::Instant::now();

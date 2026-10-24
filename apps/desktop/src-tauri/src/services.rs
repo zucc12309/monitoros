@@ -59,6 +59,10 @@ const BACK_BUTTON_SCRIPT: &str = r#"
 })();
 "#;
 
+/// Lets the iPhone remote drive the service page (spatial focus over the
+/// site's own links, player keys, cursor). See service_remote.js.
+const SERVICE_REMOTE_SCRIPT: &str = include_str!("service_remote.js");
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum OpenMode {
@@ -121,6 +125,7 @@ pub fn open(app: &AppHandle, url: &str, mode: OpenMode) -> Result<&'static str, 
                 .fullscreen(true)
                 .focused(true)
                 .initialization_script(BACK_BUTTON_SCRIPT)
+                .initialization_script(SERVICE_REMOTE_SCRIPT)
                 .on_navigation(move |u| {
                     if is_close_url(u) {
                         let h = handle.clone();
@@ -144,6 +149,22 @@ pub fn open(app: &AppHandle, url: &str, mode: OpenMode) -> Result<&'static str, 
             Ok("browser")
         }
     }
+}
+
+/// Forwards a remote command into the open in-app service page.
+/// Returns false when no service window is open.
+pub fn forward(app: &AppHandle, cmd: &monitoros_core::remote::RemoteCommand) -> bool {
+    let Some(w) = app.get_webview_window(SERVICE_WINDOW) else { return false };
+    // The command is a validated enum serialised to a JSON literal: no string
+    // from the phone is ever spliced into script source unescaped.
+    match serde_json::to_string(cmd) {
+        Ok(json) => w.eval(format!("window.__monitorosRemote && window.__monitorosRemote({json})")).is_ok(),
+        Err(_) => false,
+    }
+}
+
+pub fn is_open(app: &AppHandle) -> bool {
+    app.get_webview_window(SERVICE_WINDOW).is_some()
 }
 
 pub fn is_close_url(u: &url::Url) -> bool {
@@ -179,6 +200,19 @@ mod tests {
         assert!(is_close_url(&"https://monitoros.invalid/close".parse().unwrap()));
         assert!(!is_close_url(&"https://www.netflix.com/browse".parse().unwrap()));
         assert!(BACK_BUTTON_SCRIPT.contains(CLOSE_URL_HOST));
+    }
+
+    #[test]
+    fn remote_script_exposes_handler_and_close_url() {
+        assert!(SERVICE_REMOTE_SCRIPT.contains("window.__monitorosRemote ="));
+        assert!(SERVICE_REMOTE_SCRIPT.contains(CLOSE_URL_HOST));
+    }
+
+    #[test]
+    fn forwarded_text_is_json_escaped() {
+        let cmd = monitoros_core::remote::RemoteCommand::Text { value: "\"); alert(1); (\"".into() };
+        let json = serde_json::to_string(&cmd).unwrap();
+        assert!(json.contains(r#"\"); alert(1); (\""#), "{json}");
     }
 
     #[test]

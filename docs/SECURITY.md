@@ -28,6 +28,8 @@
 | **Option injection into mpv** | Target passed after `--`; leading `-`, `file://`, `edl://`, `av://`, `lavfi` refused; `--load-scripts=no --config=no --ytdl=no`; no shell anywhere | `media-engine::mpv` | ✅ |
 | **Untrusted subtitles** | https-only URLs; mpv parses them in its own process (crash-isolated from the UI) | normalize + mpv | ✅ partial |
 | **Third-party page in in-app service window** | No IPC capability for that window; navigation limited to https/about/blob/data; back button uses a sentinel URL, not IPC | `services.rs`, `capabilities/default.json` | ✅ unit; manual for UI |
+| **Remote driving a service page** | Commands reach the in-app service page only as a validated enum serialised to a JSON literal and passed to a fixed handler (`service_remote.js`). The page can only act on itself | `services::forward` | ✅ unit + 5 E2E |
+| **Remote typing into arbitrary apps** | System key/mouse injection only between "MonitorOS opened a service in Chrome/browser" and "MonitorOS regained focus". macOS requires the user to grant Accessibility; MonitorOS only triggers the system prompt | `input.rs`, `lib.rs` focus events | ✅ mapping unit; manual for OS |
 | **Credential theft** | MonitorOS never asks for streaming passwords; sign-in happens on the provider's own page | design | n/a |
 | **XSS in UI** | React escaping; strict CSP (no `unsafe-eval`; verified, since Playwright's eval-based wait was blocked); `freezePrototype` | `index.html`, `tauri.conf.json` | ✅ |
 | **Privilege escalation** | No elevated operations. Autostart is a user LaunchAgent / Run key via the official plugin, enabled only by an explicit toggle | design | n/a |

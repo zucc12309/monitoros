@@ -2,6 +2,7 @@
 //! adapter and the LAN remote server.
 
 mod commands;
+mod input;
 mod remote;
 mod services;
 
@@ -30,6 +31,28 @@ pub struct AppState {
     pub remote: tokio::sync::Mutex<Option<remote_server::ServerHandle>>,
     pub status: tokio::sync::watch::Sender<serde_json::Value>,
     pub mode: Mutex<Mode>,
+    /// True while a service MonitorOS opened in Chrome/a browser is in front.
+    pub external_service: std::sync::atomic::AtomicBool,
+    pub input: input::SystemInput,
+}
+
+/// Shallow-merge `patch` into the status object pushed to paired remotes.
+pub fn merge_status(state: &AppState, patch: serde_json::Value) {
+    state.status.send_modify(|cur| {
+        if let (Some(cur), Some(patch)) = (cur.as_object_mut(), patch.as_object()) {
+            for (k, v) in patch {
+                cur.insert(k.clone(), v.clone());
+            }
+        }
+    });
+}
+
+pub fn focus_main(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 fn platform() -> Box<dyn Platform> {
@@ -60,7 +83,7 @@ pub fn apply_mode(app: &AppHandle, mode: Mode) {
     }
     if let Some(state) = app.try_state::<AppState>() {
         *state.mode.lock().unwrap() = mode;
-        let _ = state.status.send(serde_json::json!({ "mode": mode }));
+        merge_status(&state, serde_json::json!({ "mode": mode }));
     }
     let _ = app.emit("mode://changed", mode);
 }
@@ -113,6 +136,8 @@ pub fn run() {
                 remote: tokio::sync::Mutex::new(None),
                 status,
                 mode: Mutex::new(Mode::Desktop),
+                external_service: std::sync::atomic::AtomicBool::new(false),
+                input: input::SystemInput::default(),
             });
 
             let gs = app.global_shortcut();
@@ -136,6 +161,21 @@ pub fn run() {
             }
             tray.build(app)?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            let app = window.app_handle();
+            let Some(state) = app.try_state::<AppState>() else { return };
+            match (window.label(), event) {
+                // MonitorOS is in front again: stop driving the system input.
+                ("main", tauri::WindowEvent::Focused(true)) if !services::is_open(app) => {
+                    state.external_service.store(false, std::sync::atomic::Ordering::SeqCst);
+                    merge_status(&state, serde_json::json!({ "service": { "open": false } }));
+                }
+                (services::SERVICE_WINDOW, tauri::WindowEvent::Destroyed) => {
+                    merge_status(&state, serde_json::json!({ "service": { "open": false } }));
+                }
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,

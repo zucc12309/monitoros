@@ -74,9 +74,15 @@ pub fn open_external(url: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn open_service(app: AppHandle, url: String, mode: services::OpenMode) -> CmdResult<&'static str> {
+pub fn open_service(app: AppHandle, state: State<'_, AppState>, url: String, mode: services::OpenMode) -> CmdResult<&'static str> {
     https_only(&url)?;
-    services::open(&app, &url, mode)
+    let how = services::open(&app, &url, mode)?;
+    // Outside MonitorOS the remote drives the system keyboard/mouse until
+    // MonitorOS gets focus back (see lib.rs window events).
+    let external = how != "in-app";
+    state.external_service.store(external, std::sync::atomic::Ordering::SeqCst);
+    crate::merge_status(&state, serde_json::json!({ "service": { "open": true, "control": if external { "system" } else { "page" } } }));
+    Ok(how)
 }
 
 #[tauri::command]

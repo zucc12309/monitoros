@@ -32,6 +32,8 @@ export interface RemoteAck {
 
 export interface RemoteStatus {
   mode: "tv" | "desktop";
+  /** A streaming service window is in front; `control` says how the remote drives it. */
+  service?: { open: boolean; control?: "page" | "system" };
   nowPlaying?: { title: string; positionSec: number; durationSec: number; paused: boolean };
   volume?: number;
   muted?: boolean;

@@ -10,6 +10,7 @@ use monitoros_core::{
 };
 use remote_server::{InboundCommand, ServerConfig, ServerEvent};
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const REMOTE_PORT: u16 = 47815;
@@ -53,8 +54,22 @@ fn dispatch(app: &AppHandle, c: InboundCommand) {
                 VolumeAction::Down => p.volume().and_then(|v| p.set_volume(v.saturating_sub(5))),
             };
         }
-        // Home/Back while a service (e.g. Netflix in-app) is open returns to MonitorOS.
-        RemoteCommand::Nav { key: NavKey::Home | NavKey::Back } if services::close(app) => {}
+        // Home always returns to MonitorOS.
+        RemoteCommand::Nav { key: NavKey::Home } if services::is_open(app) || state.external_service.load(Ordering::SeqCst) => {
+            services::close(app);
+            state.external_service.store(false, Ordering::SeqCst);
+            crate::focus_main(app);
+        }
+        // A service is open inside MonitorOS: drive that page.
+        cmd if services::is_open(app) => {
+            services::forward(app, cmd);
+        }
+        // A service is open in Chrome/Edge/browser: send real key/mouse input.
+        cmd if state.external_service.load(Ordering::SeqCst) => {
+            if !state.input.send(cmd) {
+                let _ = app.emit("remote://command", cmd);
+            }
+        }
         _ => {
             let _ = app.emit("remote://command", &c.command);
         }
@@ -125,7 +140,7 @@ pub async fn remote_stop(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub fn remote_status(state: State<'_, AppState>, status: serde_json::Value) {
-    let _ = state.status.send(status);
+    crate::merge_status(&state, status);
 }
 
 #[tauri::command]

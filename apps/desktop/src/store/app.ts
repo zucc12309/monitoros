@@ -163,7 +163,7 @@ export const useApp = create<AppState>((set, get) => ({
 
   stopPlayback() {
     set({ nowPlaying: null });
-    void pushRemoteStatus({ mode: get().mode });
+    void pushRemoteStatus({ mode: get().mode, nowPlaying: null });
   },
 
   async launchService(url, name) {

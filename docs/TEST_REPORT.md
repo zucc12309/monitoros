@@ -7,10 +7,10 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 | Suite | Command | Result |
 |---|---|---|
 | TS unit + security (Vitest) | `npm test` | **95 / 95** across 7 files |
-| Rust unit + integration | `cargo test --workspace` | **47 / 47** |
+| Rust unit + integration | `cargo test --workspace` | **53 / 53** |
 | Rust lint | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | TS typecheck | `tsc --noEmit -p apps/desktop` and root | clean |
-| E2E (Playwright, Chrome) | `npm run test:e2e` | **5 / 5** |
+| E2E (Playwright, Chrome) | `npm run test:e2e` | **10 / 10** |
 | Windows cross-check | `cargo check --target x86_64-pc-windows-msvc -p platform-windows -p media-engine -p monitoros-core` | compiles |
 | macOS release bundle | `scripts/macos/build.sh` | `MonitorOS.app` (19 MB), DMG (7 MB) |
 
@@ -35,6 +35,14 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
   - Netflix tile hands off to `https://www.netflix.com/…`
   - search "RRR" opens a detail page showing "Availability unknown"
   - **His Girl Friday (1940, public domain, Internet Archive) streams for >1 s in the in-app player, Escape exits, and progress is saved (duration > 3000 s)**
+
+- **Remote inside streaming pages (`tests/e2e/service-remote.spec.ts`)**, running the exact injected script on a site-like fixture in Chrome:
+  - the D-pad walks the site's own tiles (row/column aware) and OK opens one
+  - during playback, arrows, play-pause and seek reach the player as key events (with keyCode)
+  - the touchpad cursor clicks what's under it
+  - phone text fills the search box
+  - Back steps back inside the site, and from the entry page returns to MonitorOS
+- **Not yet verified against live Netflix/Prime** (needs the user's sign-in). Sites that ignore synthetic keys still work with cursor mode.
 
 ## Manual checks done in this session
 

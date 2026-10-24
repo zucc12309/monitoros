@@ -4,6 +4,17 @@ import "./style.css";
 
 const app = document.getElementById("app")!;
 let conn: RemoteConnection | null = null;
+/** Touchpad mode: "swipe" = D-pad gestures, "cursor" = move a pointer on the TV. */
+let padMode: "swipe" | "cursor" = "swipe";
+let padModeLocked = false; // user chose a mode explicitly
+
+function setPadMode(m: "swipe" | "cursor") {
+  padMode = m;
+  const t = document.getElementById("padmode");
+  const hint = document.querySelector(".pad .hint");
+  if (t) t.textContent = m === "cursor" ? "Cursor ✓" : "Swipe ✓";
+  if (hint) hint.textContent = m === "cursor" ? "Drag to move the pointer · Tap to click" : "Swipe to move · Tap to select";
+}
 
 const h = (html: string) => {
   app.innerHTML = html;
@@ -95,8 +106,9 @@ function renderRemote() {
       <button id="mode" class="pill">TV ⇄ Desktop</button>
     </header>
     <div id="now" class="now hidden"></div>
-    <div id="pad" class="pad" aria-label="Touchpad: swipe to move, tap to select">
+    <div id="pad" class="pad" aria-label="Touchpad">
       <span class="hint">Swipe to move · Tap to select</span>
+      <button id="padmode" class="pill padmode">Swipe ✓</button>
     </div>
     <div class="dpad">
       <button data-nav="up" class="up" aria-label="Up">▲</button>
@@ -146,13 +158,31 @@ function renderRemote() {
     if (input.value) send({ type: "text", value: input.value.slice(0, 256) });
     input.value = "";
   };
+  $("#padmode").onclick = (e) => {
+    e.stopPropagation();
+    padModeLocked = true;
+    setPadMode(padMode === "swipe" ? "cursor" : "swipe");
+  };
   bindTouchpad($("#pad"));
+  setPadMode(padMode);
 }
 
-/** Apple-TV-style touchpad: swipes become D-pad steps, taps become OK. */
+/**
+ * Touchpad. Swipe mode (Apple-TV style): swipes become D-pad steps, tap = OK.
+ * Cursor mode (for websites like Netflix): drag moves a pointer, tap = click.
+ */
 function bindTouchpad(pad: HTMLElement) {
   const STEP = 42; // px of travel per nav step
   let sx = 0, sy = 0, moved = false, t0 = 0;
+  let pending = { dx: 0, dy: 0 };
+  let frame = 0;
+  const flushPointer = () => {
+    frame = 0;
+    if (!pending.dx && !pending.dy) return;
+    // Pointer moves are frequent: skip haptics, clamp to the protocol limit.
+    conn?.send({ type: "pointer", dx: Math.max(-500, Math.min(500, pending.dx)), dy: Math.max(-500, Math.min(500, pending.dy)) });
+    pending = { dx: 0, dy: 0 };
+  };
   pad.addEventListener("touchstart", (e) => {
     const t = e.touches[0]!;
     sx = t.clientX;
@@ -164,6 +194,15 @@ function bindTouchpad(pad: HTMLElement) {
     e.preventDefault();
     const t = e.touches[0]!;
     const dx = t.clientX - sx, dy = t.clientY - sy;
+    if (padMode === "cursor") {
+      if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+      pending.dx += dx;
+      pending.dy += dy;
+      sx = t.clientX;
+      sy = t.clientY;
+      frame ||= window.setTimeout(flushPointer, 40); // ≤25 msgs/s, within the server's 40/s budget
+      return;
+    }
     if (Math.max(Math.abs(dx), Math.abs(dy)) < STEP) return;
     moved = true;
     const key: NavKey = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
@@ -172,7 +211,10 @@ function bindTouchpad(pad: HTMLElement) {
     sy = t.clientY;
   }, { passive: false });
   pad.addEventListener("touchend", () => {
-    if (!moved && Date.now() - t0 < 300) send({ type: "nav", key: "ok" });
+    flushPointer();
+    if (moved || Date.now() - t0 >= 300) return;
+    if (padMode === "cursor") send({ type: "pointer", dx: 0, dy: 0, click: true });
+    else send({ type: "nav", key: "ok" });
   });
 }
 
@@ -193,6 +235,14 @@ function setStatus(st: RemoteStatus) {
   const mode = document.getElementById("mode");
   if (mode) mode.textContent = st.mode === "tv" ? "Switch to Desktop" : "Switch to TV";
   if (!now) return;
+  if (st.service?.open) {
+    // A website (Netflix etc.) is showing: a pointer is the reliable way around it.
+    if (!padModeLocked) setPadMode("cursor");
+    now.classList.remove("hidden");
+    now.textContent = "Controlling the streaming app · Home returns to MonitorOS";
+    return;
+  }
+  if (!padModeLocked && padMode === "cursor") setPadMode("swipe");
   if (st.nowPlaying) {
     now.classList.remove("hidden");
     now.textContent = `Now playing: ${st.nowPlaying.title}`;
