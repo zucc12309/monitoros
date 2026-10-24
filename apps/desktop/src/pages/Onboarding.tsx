@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FREE_PROVIDERS, SUBSCRIPTION_SERVICES } from "@monitoros/metadata";
 import { Logo } from "../components/icons";
 import { isTauri, libraryAddRoot, pickFolder, remoteStart, setAutostart } from "../lib/bridge";
@@ -9,6 +9,10 @@ const LANGS: [string, string][] = [["hi", "Hindi"], ["en", "English"], ["ta", "T
 export function OnboardingPage() {
   const { settings, updateSettings, navigate, toast } = useApp();
   const [step, setStep] = useState(0);
+  const primary = useRef<HTMLButtonElement>(null);
+  // Each step re-renders the button row (Back/Skip appear), which can drop
+  // focus; put it back on the primary action so OK on the remote keeps working.
+  useEffect(() => primary.current?.focus(), [step]);
   const steps = ["Welcome", "Languages", "Subscriptions", "Free", "Library", "Remote", "Startup"];
   const next = () => (step < steps.length - 1 ? setStep(step + 1) : finish());
   const finish = () => {
@@ -98,7 +102,7 @@ export function OnboardingPage() {
 
       <div className="mt-14 flex gap-4">
         {step > 0 && <button data-nav-row="ob-nav" className="tv-focus rounded-xl bg-white/10 px-8 py-4 text-xl" onClick={() => setStep(step - 1)}>Back</button>}
-        <button data-nav-row="ob-nav" autoFocus className="tv-focus rounded-xl bg-white px-10 py-4 text-xl font-semibold text-black" onClick={next}>{step === steps.length - 1 ? "Start watching" : step === 0 ? "Get started" : "Continue"}</button>
+        <button ref={primary} data-nav-row="ob-nav" className="tv-focus rounded-xl bg-white px-10 py-4 text-xl font-semibold text-black" onClick={next}>{step === steps.length - 1 ? "Start watching" : step === 0 ? "Get started" : "Continue"}</button>
         {step > 0 && step < steps.length - 1 && <button data-nav-row="ob-nav" className="tv-focus rounded-xl px-6 py-4 text-xl text-white/60" onClick={next}>Skip</button>}
       </div>
     </div>

@@ -65,6 +65,8 @@ pub enum RemoteCommand {
         #[serde(default)]
         click: bool,
     },
+    /// Two-finger touchpad scroll, in phone pixels (natural direction).
+    Scroll { dx: f64, dy: f64 },
     Mode { target: ModeTarget },
     Ping,
 }
@@ -107,6 +109,11 @@ impl RemoteCommand {
                 Err(CommandError::OutOfRange)
             }
             RemoteCommand::Pointer { dx, dy, .. }
+                if !dx.is_finite() || !dy.is_finite() || dx.abs() > MAX_POINTER_DELTA || dy.abs() > MAX_POINTER_DELTA =>
+            {
+                Err(CommandError::OutOfRange)
+            }
+            RemoteCommand::Scroll { dx, dy }
                 if !dx.is_finite() || !dy.is_finite() || dx.abs() > MAX_POINTER_DELTA || dy.abs() > MAX_POINTER_DELTA =>
             {
                 Err(CommandError::OutOfRange)
@@ -207,6 +214,13 @@ mod tests {
         let long = format!(r#"{{"seq":1,"sentAt":1,"command":{{"type":"text","value":"{}"}}}}"#, "a".repeat(300));
         assert_eq!(parse_envelope(&long), Err(CommandError::OutOfRange));
         assert_eq!(parse_envelope(&"x".repeat(5000)), Err(CommandError::TooLarge));
+    }
+
+    #[test]
+    fn scroll_is_range_checked() {
+        let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"scroll","dx":0,"dy":-40}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Scroll { dx: 0.0, dy: -40.0 });
+        assert_eq!(parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"scroll","dx":0,"dy":1e9}}"#), Err(CommandError::OutOfRange));
     }
 
     #[test]

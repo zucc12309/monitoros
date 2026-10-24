@@ -7,16 +7,43 @@
 //! times. On macOS this needs Accessibility permission; the first use shows
 //! the system prompt (MonitorOS never changes the setting itself).
 
-use enigo::{Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+use enigo::{Axis, Button, Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use monitoros_core::remote::{MediaAction, NavKey, RemoteCommand};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Mutex;
+
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
+
+/// Whether MonitorOS may synthesise mouse/keyboard input. macOS gates this
+/// behind Privacy & Security › Accessibility; Windows allows it for
+/// same-integrity apps.
+pub fn permitted() -> bool {
+    #[cfg(target_os = "macos")]
+    // SAFETY: argument-less query of the current process's trust state.
+    return unsafe { AXIsProcessTrusted() };
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+/// Pointer acceleration: slow drags stay precise, fast flicks cross the screen.
+pub fn accelerate(dx: f64, dy: f64) -> (i32, i32) {
+    let speed = dx.hypot(dy);
+    let factor = 1.4 + (speed / 25.0).min(2.0);
+    ((dx * factor).round() as i32, (dy * factor).round() as i32)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Tap(KeyName),
     MoveMouse(i32, i32),
     Click,
+    /// Wheel ticks: (horizontal, vertical); positive = right/down.
+    Scroll(i32, i32),
     Text(String),
 }
 
@@ -68,7 +95,7 @@ pub fn plan(cmd: &RemoteCommand) -> Vec<Action> {
         }
         RemoteCommand::Pointer { dx, dy, click } => {
             let mut v = vec![];
-            let (x, y) = ((dx * 1.6).round() as i32, (dy * 1.6).round() as i32);
+            let (x, y) = accelerate(*dx, *dy);
             if x != 0 || y != 0 {
                 v.push(MoveMouse(x, y));
             }
@@ -76,6 +103,16 @@ pub fn plan(cmd: &RemoteCommand) -> Vec<Action> {
                 v.push(Click);
             }
             v
+        }
+        RemoteCommand::Scroll { dx, dy } => {
+            // Natural scrolling: fingers up → content up → view scrolls down.
+            let ticks = |d: f64| (-d / 12.0).round().clamp(-10.0, 10.0) as i32;
+            let (x, y) = (ticks(*dx), ticks(*dy));
+            if x == 0 && y == 0 {
+                vec![]
+            } else {
+                vec![Scroll(x, y)]
+            }
         }
         RemoteCommand::Text { value } if !value.is_empty() => vec![Text(value.clone())],
         _ => vec![],
@@ -88,6 +125,16 @@ fn run(enigo: &mut Enigo, actions: Vec<Action>) -> Result<(), String> {
             Action::Tap(k) => enigo.key(k.into(), Direction::Click),
             Action::MoveMouse(x, y) => enigo.move_mouse(x, y, Coordinate::Rel),
             Action::Click => enigo.button(Button::Left, Direction::Click),
+            Action::Scroll(x, y) => {
+                if x != 0 {
+                    enigo.scroll(x, Axis::Horizontal).map_err(|e| e.to_string())?;
+                }
+                if y != 0 {
+                    enigo.scroll(y, Axis::Vertical)
+                } else {
+                    Ok(())
+                }
+            }
             Action::Text(t) => enigo.text(&t),
         }
         .map_err(|e| e.to_string())?;
@@ -98,15 +145,28 @@ fn run(enigo: &mut Enigo, actions: Vec<Action>) -> Result<(), String> {
 /// Owns enigo on a dedicated thread (its macOS event source isn't Send).
 pub struct SystemInput {
     tx: Mutex<Option<mpsc::Sender<Vec<Action>>>>,
+    prompted: AtomicBool,
 }
 
 impl Default for SystemInput {
     fn default() -> Self {
-        Self { tx: Mutex::new(None) }
+        Self { tx: Mutex::new(None), prompted: AtomicBool::new(false) }
     }
 }
 
 impl SystemInput {
+    /// Shows the macOS Accessibility prompt at most once per run (the OS
+    /// prompt is the only way MonitorOS asks; it never edits the setting).
+    pub fn request_permission_once(&self) {
+        if permitted() || self.prompted.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        std::thread::spawn(|| {
+            let settings = Settings { open_prompt_to_get_permissions: true, ..Default::default() };
+            let _ = Enigo::new(&settings);
+        });
+    }
+
     fn sender(&self) -> mpsc::Sender<Vec<Action>> {
         let mut guard = self.tx.lock().unwrap();
         if let Some(tx) = guard.as_ref() {
@@ -116,8 +176,7 @@ impl SystemInput {
         std::thread::Builder::new()
             .name("monitoros-input".into())
             .spawn(move || {
-                // Prompts for Accessibility on macOS the first time.
-                let settings = Settings { open_prompt_to_get_permissions: true, ..Default::default() };
+                let settings = Settings { open_prompt_to_get_permissions: false, ..Default::default() };
                 let mut enigo = match Enigo::new(&settings) {
                     Ok(e) => e,
                     Err(e) => {
@@ -140,6 +199,10 @@ impl SystemInput {
     pub fn send(&self, cmd: &RemoteCommand) -> bool {
         let actions = plan(cmd);
         if actions.is_empty() {
+            return false;
+        }
+        if !permitted() {
+            self.request_permission_once();
             return false;
         }
         if self.sender().send(actions).is_err() {
@@ -172,8 +235,24 @@ mod tests {
 
     #[test]
     fn pointer_moves_and_clicks() {
-        assert_eq!(plan(&RemoteCommand::Pointer { dx: 10.0, dy: -5.0, click: true }), vec![Action::MoveMouse(16, -8), Action::Click]);
+        assert_eq!(plan(&RemoteCommand::Pointer { dx: 10.0, dy: -5.0, click: true }), vec![Action::MoveMouse(18, -9), Action::Click]);
         assert!(plan(&RemoteCommand::Pointer { dx: 0.0, dy: 0.0, click: false }).is_empty());
+    }
+
+    #[test]
+    fn acceleration_is_gentle_when_slow_and_fast_when_flicked() {
+        assert_eq!(accelerate(2.0, 0.0), (3, 0));
+        let (fast, _) = accelerate(100.0, 0.0);
+        assert!(fast >= 300, "{fast}");
+        assert_eq!(accelerate(-4.0, 3.0), (-6, 5)); // speed 5 → ×1.6
+    }
+
+    #[test]
+    fn two_finger_scroll_is_natural_and_bounded() {
+        assert_eq!(plan(&RemoteCommand::Scroll { dx: 0.0, dy: -36.0 }), vec![Action::Scroll(0, 3)]);
+        assert_eq!(plan(&RemoteCommand::Scroll { dx: 60.0, dy: 0.0 }), vec![Action::Scroll(-5, 0)]);
+        assert_eq!(plan(&RemoteCommand::Scroll { dx: 0.0, dy: 499.0 }), vec![Action::Scroll(0, -10)]);
+        assert!(plan(&RemoteCommand::Scroll { dx: 2.0, dy: 2.0 }).is_empty());
     }
 
     #[test]

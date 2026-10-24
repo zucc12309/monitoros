@@ -8,6 +8,11 @@ describe("remote command validation", () => {
     expect(validateCommand({ type: "mode", target: "toggle" })).toEqual({ type: "mode", target: "toggle" });
   });
 
+  it("accepts scroll and range-checks it", () => {
+    expect(validateCommand({ type: "scroll", dx: 0, dy: -30 })).toEqual({ type: "scroll", dx: 0, dy: -30 });
+    expect(() => validateCommand({ type: "scroll", dx: 0, dy: 1e9 })).toThrow();
+  });
+
   it("rejects unknown types and bad values", () => {
     expect(() => validateCommand({ type: "exec", cmd: "rm -rf /" })).toThrow(/unknown command/);
     expect(() => validateCommand({ type: "nav", key: "sideways" })).toThrow();

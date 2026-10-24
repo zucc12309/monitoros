@@ -14,6 +14,7 @@ export type RemoteCommand =
   | { type: "volume"; action: "up" | "down" | "mute" }
   | { type: "text"; value: string }
   | { type: "pointer"; dx: number; dy: number; click?: boolean }
+  | { type: "scroll"; dx: number; dy: number }
   | { type: "mode"; target: "tv" | "desktop" | "toggle" }
   | { type: "ping" };
 
@@ -34,6 +35,8 @@ export interface RemoteStatus {
   mode: "tv" | "desktop";
   /** A streaming service window is in front; `control` says how the remote drives it. */
   service?: { open: boolean; control?: "page" | "system" };
+  /** "system" = touchpad moves the real pointer; "needs-permission" = macOS Accessibility not granted yet. */
+  mouse?: "system" | "needs-permission";
   nowPlaying?: { title: string; positionSec: number; durationSec: number; paused: boolean };
   volume?: number;
   muted?: boolean;
@@ -71,6 +74,10 @@ export function validateCommand(raw: unknown): RemoteCommand {
       if (!finite(raw.dx) || !finite(raw.dy) || Math.abs(raw.dx) > MAX_POINTER_DELTA || Math.abs(raw.dy) > MAX_POINTER_DELTA)
         throw new Error("invalid pointer delta");
       return { type: "pointer", dx: raw.dx, dy: raw.dy, click: raw.click === true };
+    case "scroll":
+      if (!finite(raw.dx) || !finite(raw.dy) || Math.abs(raw.dx) > MAX_POINTER_DELTA || Math.abs(raw.dy) > MAX_POINTER_DELTA)
+        throw new Error("invalid scroll delta");
+      return { type: "scroll", dx: raw.dx, dy: raw.dy };
     case "mode":
       if (!["tv", "desktop", "toggle"].includes(raw.target as string)) throw new Error("invalid mode");
       return { type: "mode", target: raw.target as "tv" };

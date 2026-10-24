@@ -6,11 +6,11 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 
 | Suite | Command | Result |
 |---|---|---|
-| TS unit + security (Vitest) | `npm test` | **95 / 95** across 7 files |
-| Rust unit + integration | `cargo test --workspace` | **53 / 53** |
+| TS unit + security (Vitest) | `npm test` | **96 / 96** across 7 files |
+| Rust unit + integration | `cargo test --workspace` | **56 / 56** |
 | Rust lint | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | TS typecheck | `tsc --noEmit -p apps/desktop` and root | clean |
-| E2E (Playwright, Chrome) | `npm run test:e2e` | **10 / 10** |
+| E2E (Playwright, Chrome) | `npm run test:e2e` | **14 / 14** |
 | Windows cross-check | `cargo check --target x86_64-pc-windows-msvc -p platform-windows -p media-engine -p monitoros-core` | compiles |
 | macOS release bundle | `scripts/macos/build.sh` | `MonitorOS.app` (19 MB), DMG (7 MB) |
 
@@ -42,6 +42,7 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
   - the touchpad cursor clicks what's under it
   - phone text fills the search box
   - Back steps back inside the site, and from the entry page returns to MonitorOS
+- **Phone touchpad (`tests/e2e/remote-touchpad.spec.ts`, mobile Chrome with real TouchEvents):** with a service open it auto-switches to Mouse mode; a one-finger drag sends pointer deltas (no click); a tap clicks; two-finger drag scrolls without clicking. In MonitorOS it swipes like a D-pad. The macOS permission hint is shown when needed.
 - **Not yet verified against live Netflix/Prime** (needs the user's sign-in). Sites that ignore synthetic keys still work with cursor mode.
 
 ## Manual checks done in this session
@@ -59,7 +60,9 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 3. **Focus restore was wrong after mouse/autoFocus focus.** Fixed with `focusin` tracking.
 4. **Keys pressed before load were lost.** They navigated, then init overwrote the page. Input is now ignored until the app is ready.
 5. **mpv one-shot events were missed.** `duration` was emitted before callers subscribed (the test failed 4 of 5 runs). `spawn` now returns a pre-subscribed receiver (passed 6 of 6). This would have stopped native playback from saving progress.
-6. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
+6. **Netflix-style hero trailers stole the D-pad.** An autoplaying browse-page trailer was mistaken for the movie being watched, so arrows only scrolled and nothing could be selected (user report). Now only a (near-)full-screen or fullscreen video counts. A regression test reproduces the original failure.
+7. **Onboarding lost keyboard focus** when the Back button appeared (flaky E2E, 1 of 3 runs). Focus is now pinned to the primary button on each step.
+8. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
 
 ## Environment notes
 

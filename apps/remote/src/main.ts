@@ -4,7 +4,7 @@ import "./style.css";
 
 const app = document.getElementById("app")!;
 let conn: RemoteConnection | null = null;
-/** Touchpad mode: "swipe" = D-pad gestures, "cursor" = move a pointer on the TV. */
+/** Touchpad mode: "swipe" = D-pad gestures, "cursor" = the computer's mouse (trackpad). */
 let padMode: "swipe" | "cursor" = "swipe";
 let padModeLocked = false; // user chose a mode explicitly
 
@@ -12,8 +12,8 @@ function setPadMode(m: "swipe" | "cursor") {
   padMode = m;
   const t = document.getElementById("padmode");
   const hint = document.querySelector(".pad .hint");
-  if (t) t.textContent = m === "cursor" ? "Cursor ✓" : "Swipe ✓";
-  if (hint) hint.textContent = m === "cursor" ? "Drag to move the pointer · Tap to click" : "Swipe to move · Tap to select";
+  if (t) t.textContent = m === "cursor" ? "Mouse ✓" : "Swipe ✓";
+  if (hint) hint.textContent = m === "cursor" ? "1 finger: move · Tap: click · 2 fingers: scroll" : "Swipe to move · Tap to select";
 }
 
 const h = (html: string) => {
@@ -169,50 +169,79 @@ function renderRemote() {
 
 /**
  * Touchpad. Swipe mode (Apple-TV style): swipes become D-pad steps, tap = OK.
- * Cursor mode (for websites like Netflix): drag moves a pointer, tap = click.
+ * Mouse mode (trackpad): one finger moves the computer's pointer, tap clicks,
+ * two fingers scroll (e.g. Netflix rows sideways).
  */
 function bindTouchpad(pad: HTMLElement) {
-  const STEP = 42; // px of travel per nav step
-  let sx = 0, sy = 0, moved = false, t0 = 0;
-  let pending = { dx: 0, dy: 0 };
-  let frame = 0;
-  const flushPointer = () => {
-    frame = 0;
-    if (!pending.dx && !pending.dy) return;
-    // Pointer moves are frequent: skip haptics, clamp to the protocol limit.
-    conn?.send({ type: "pointer", dx: Math.max(-500, Math.min(500, pending.dx)), dy: Math.max(-500, Math.min(500, pending.dy)) });
-    pending = { dx: 0, dy: 0 };
+  const STEP = 42; // px of travel per nav step (swipe mode)
+  let sx = 0, sy = 0, moved = false, t0 = 0, fingers = 0;
+  let move = { dx: 0, dy: 0 };
+  let scroll = { dx: 0, dy: 0 };
+  let timer = 0;
+  const clamp = (v: number) => Math.max(-500, Math.min(500, v));
+  // Batch touch movement into ≤25 messages/s (server budget is 40/s).
+  const flush = () => {
+    timer = 0;
+    if (move.dx || move.dy) conn?.send({ type: "pointer", dx: clamp(move.dx), dy: clamp(move.dy) });
+    if (scroll.dx || scroll.dy) conn?.send({ type: "scroll", dx: clamp(scroll.dx), dy: clamp(scroll.dy) });
+    move = { dx: 0, dy: 0 };
+    scroll = { dx: 0, dy: 0 };
   };
+  const centre = (e: TouchEvent) => {
+    let x = 0, y = 0;
+    for (const t of Array.from(e.touches)) {
+      x += t.clientX;
+      y += t.clientY;
+    }
+    return { x: x / e.touches.length, y: y / e.touches.length };
+  };
+
   pad.addEventListener("touchstart", (e) => {
-    const t = e.touches[0]!;
-    sx = t.clientX;
-    sy = t.clientY;
-    moved = false;
-    t0 = Date.now();
+    const c = centre(e);
+    sx = c.x;
+    sy = c.y;
+    if (e.touches.length === 1) {
+      moved = false;
+      t0 = Date.now();
+    }
+    fingers = Math.max(fingers, e.touches.length);
   }, { passive: true });
+
   pad.addEventListener("touchmove", (e) => {
     e.preventDefault();
-    const t = e.touches[0]!;
-    const dx = t.clientX - sx, dy = t.clientY - sy;
+    const c = centre(e);
+    const dx = c.x - sx, dy = c.y - sy;
     if (padMode === "cursor") {
       if (Math.abs(dx) + Math.abs(dy) > 2) moved = true;
-      pending.dx += dx;
-      pending.dy += dy;
-      sx = t.clientX;
-      sy = t.clientY;
-      frame ||= window.setTimeout(flushPointer, 40); // ≤25 msgs/s, within the server's 40/s budget
+      const bucket = e.touches.length >= 2 ? scroll : move;
+      bucket.dx += dx;
+      bucket.dy += dy;
+      sx = c.x;
+      sy = c.y;
+      timer ||= window.setTimeout(flush, 40);
       return;
     }
     if (Math.max(Math.abs(dx), Math.abs(dy)) < STEP) return;
     moved = true;
     const key: NavKey = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
     send({ type: "nav", key });
-    sx = t.clientX;
-    sy = t.clientY;
+    sx = c.x;
+    sy = c.y;
   }, { passive: false });
-  pad.addEventListener("touchend", () => {
-    flushPointer();
-    if (moved || Date.now() - t0 >= 300) return;
+
+  pad.addEventListener("touchend", (e) => {
+    if (e.touches.length > 0) {
+      // A finger lifted mid-gesture: re-anchor so the pointer doesn't jump.
+      const c = centre(e);
+      sx = c.x;
+      sy = c.y;
+      return;
+    }
+    flush();
+    const tap = !moved && Date.now() - t0 < 300;
+    const wasMulti = fingers > 1;
+    fingers = 0;
+    if (!tap || wasMulti) return;
     if (padMode === "cursor") send({ type: "pointer", dx: 0, dy: 0, click: true });
     else send({ type: "nav", key: "ok" });
   });
@@ -235,9 +264,14 @@ function setStatus(st: RemoteStatus) {
   const mode = document.getElementById("mode");
   if (mode) mode.textContent = st.mode === "tv" ? "Switch to Desktop" : "Switch to TV";
   if (!now) return;
+  // A website (Netflix etc.) is showing: a mouse is the reliable way around it.
+  if (st.service?.open && !padModeLocked) setPadMode("cursor");
+  if (st.mouse === "needs-permission" && padMode === "cursor") {
+    now.classList.remove("hidden");
+    now.textContent = "To move the computer's mouse: on the computer open System Settings › Privacy & Security › Accessibility and turn on MonitorOS.";
+    return;
+  }
   if (st.service?.open) {
-    // A website (Netflix etc.) is showing: a pointer is the reliable way around it.
-    if (!padModeLocked) setPadMode("cursor");
     now.classList.remove("hidden");
     now.textContent = "Controlling the streaming app · Home returns to MonitorOS";
     return;

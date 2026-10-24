@@ -60,6 +60,17 @@ fn dispatch(app: &AppHandle, c: InboundCommand) {
             state.external_service.store(false, Ordering::SeqCst);
             crate::focus_main(app);
         }
+        // Touchpad = the real system mouse (trusted clicks work on every site
+        // and in MonitorOS itself). Without macOS Accessibility permission,
+        // fall back to the in-page cursor and tell the phone why.
+        RemoteCommand::Pointer { .. } | RemoteCommand::Scroll { .. } => {
+            let granted = crate::input::permitted();
+            crate::merge_status(&state, serde_json::json!({ "mouse": if granted { "system" } else { "needs-permission" } }));
+            if !(granted && state.input.send(&c.command)) {
+                state.input.request_permission_once();
+                services::forward(app, &c.command);
+            }
+        }
         // A service is open inside MonitorOS: drive that page.
         cmd if services::is_open(app) => {
             services::forward(app, cmd);

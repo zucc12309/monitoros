@@ -53,6 +53,39 @@ test("D-pad moves a visible focus across the site's own tiles and OK opens one",
   expect(await log(page)).toContain("open:t6");
 });
 
+// Netflix-like home page: an autoplaying hero trailer above rows of title
+// cards that are focusable links inside a transformed, overflow-hidden slider.
+const NETFLIX_LIKE = `<!doctype html><html><body style="margin:0;background:#141414;color:#fff;font:16px sans-serif">
+<div class="billboard" style="position:relative;height:56vh;overflow:hidden">
+  <video id="trailer" muted autoplay loop style="width:100%;height:100%;object-fit:cover"></video>
+  <button id="play" style="position:absolute;left:40px;bottom:40px">Play</button>
+</div>
+<div class="row" style="overflow:hidden;padding:20px 0"><div class="slider" style="display:flex;gap:8px;transform:translateX(40px)">
+  ${Array.from({ length: 6 }, (_, i) => `<div class="title-card"><a href="/watch/${i}" id="card${i}" role="link" tabindex="0" aria-label="Movie ${i}" style="display:block;width:240px;height:135px;background:#444"></a></div>`).join("")}
+</div></div>
+<script>
+  window.log = [];
+  document.querySelectorAll('.title-card a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); window.log.push('open:' + a.id); }));
+  document.addEventListener('keydown', e => window.log.push('key:' + e.key));
+  const t = document.getElementById('trailer');
+  Object.defineProperty(t, 'currentTime', { get: () => 12, configurable: true });
+  Object.defineProperty(t, 'paused', { get: () => false, configurable: true });
+</script></body></html>`;
+
+test("a hero trailer on the browse page doesn't steal the D-pad (Netflix home)", async ({ page }) => {
+  await page.addInitScript(SCRIPT);
+  await page.route("https://netflix.test/**", (r) => r.fulfill({ contentType: "text/html", body: NETFLIX_LIKE }));
+  await page.goto("https://netflix.test/browse");
+  await remote(page, { type: "nav", key: "down" });
+  expect(await focusedId(page)).toBe("play");
+  await remote(page, { type: "nav", key: "down" });
+  expect(await focusedId(page)).toMatch(/^card/);
+  await remote(page, { type: "nav", key: "right" });
+  const id = await focusedId(page);
+  await remote(page, { type: "nav", key: "ok" });
+  expect(await log(page)).toEqual([`open:${id}`]); // selected a title; no stray key events
+});
+
 test("during playback, arrows/OK/play-pause/seek go to the player as keys", async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).startPlayer());

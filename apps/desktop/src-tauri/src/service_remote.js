@@ -85,10 +85,19 @@
     return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0" && !el.closest("[aria-hidden='true']");
   }
 
+  // The video the user is *watching*, not a browse-page trailer. Netflix,
+  // Prime and Hotstar autoplay large hero trailers on their home pages; those
+  // must not capture the D-pad, or the arrows only scroll and nothing can be
+  // selected. A watched video fills (nearly) the whole screen.
   function activeVideo() {
+    const fs = document.fullscreenElement;
     const vids = [...document.querySelectorAll("video")].filter((v) => {
+      if (!(v.currentTime > 0 || !v.paused)) return false;
+      if (fs && (fs === v || fs.contains(v))) return true;
       const r = v.getBoundingClientRect();
-      return r.width * r.height > innerWidth * innerHeight * 0.25 && (v.currentTime > 0 || !v.paused);
+      const w = Math.min(r.right, innerWidth) - Math.max(r.left, 0);
+      const h = Math.min(r.bottom, innerHeight) - Math.max(r.top, 0);
+      return w > 0 && h > 0 && w >= innerWidth * 0.9 && h >= innerHeight * 0.85;
     });
     return vids[0] || null;
   }
@@ -221,6 +230,19 @@
         showCursor();
         if (cmd.click) clickEl(document.elementFromPoint(cx, cy));
         return;
+      case "scroll": {
+        // Scroll whatever is under the cursor (rows scroll sideways), else the page.
+        let el = cursorVisible() ? document.elementFromPoint(cx, cy) : current;
+        const canScroll = (n, axis) => {
+          const st = getComputedStyle(n);
+          const ov = axis === "x" ? st.overflowX : st.overflowY;
+          return /(auto|scroll)/.test(ov) && (axis === "x" ? n.scrollWidth > n.clientWidth : n.scrollHeight > n.clientHeight);
+        };
+        const axis = Math.abs(cmd.dx) > Math.abs(cmd.dy) ? "x" : "y";
+        while (el && el !== document.body && !canScroll(el, axis)) el = el.parentElement;
+        (el && el !== document.body ? el : document.scrollingElement).scrollBy({ left: -cmd.dx * 3, top: -cmd.dy * 3 });
+        return;
+      }
       case "text": {
         const el = document.activeElement;
         if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
