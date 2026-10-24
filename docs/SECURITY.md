@@ -31,7 +31,7 @@
 | **Remote driving a service page** | Commands reach the in-app service page only as a validated enum serialised to a JSON literal and passed to a fixed handler (`service_remote.js`). The page can only act on itself | `services::forward` | ✅ unit + 5 E2E |
 | **Remote typing into other apps** | By design (user request), when another app is in front a *paired, approved* phone sends real keys/mouse to it, so the remote works in every app. Limited to the closed command set (arrows, Enter, Esc, Space, the full-screen shortcut, typed text, pointer, scroll); no shortcuts like Cmd+Q, Cmd+Tab or Win+R. Can be switched off: Settings › iPhone Remote › "Remote controls other apps". macOS additionally requires the user to grant Accessibility | `routing.rs`, `input.rs` | ✅ routing + mapping unit; manual for OS |
 | **Credential theft** | MonitorOS never asks for streaming passwords; sign-in happens on the provider's own page | design | n/a |
-| **XSS in UI** | React escaping; strict CSP (no `unsafe-eval`; verified, since Playwright's eval-based wait was blocked); `freezePrototype` | `index.html`, `tauri.conf.json` | ✅ |
+| **XSS in UI** | React escaping; strict CSP (no `unsafe-eval`; verified, since Playwright's eval-based wait was blocked); `Object.prototype` frozen in the main UI only (`hardening.ts`). Tauri's global `freezePrototype` is off because it also runs inside streaming sites and broke YouTube and Netflix | `index.html`, `tauri.conf.json` | ✅ |
 | **Privilege escalation** | No elevated operations. Autostart is a user LaunchAgent / Run key via the official plugin, enabled only by an explicit toggle | design | n/a |
 
 ## Known gaps

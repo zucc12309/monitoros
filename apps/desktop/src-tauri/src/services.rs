@@ -257,6 +257,16 @@ mod tests {
     }
 
     #[test]
+    fn global_freeze_prototype_stays_off() {
+        // Tauri injects freezePrototype into every webview, including the
+        // streaming window, where it blanks YouTube and breaks Netflix.
+        // MonitorOS's own UI freezes itself in src/hardening.ts instead.
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["app"]["security"]["freezePrototype"], serde_json::Value::Bool(false));
+        assert!(include_str!("../../src/main.tsx").starts_with("import \"./hardening\";"));
+    }
+
+    #[test]
     fn open_mode_parses() {
         assert_eq!(serde_json::from_str::<OpenMode>("\"app-window\"").unwrap(), OpenMode::AppWindow);
         assert_eq!(serde_json::from_str::<OpenMode>("\"in-app\"").unwrap(), OpenMode::InApp);
