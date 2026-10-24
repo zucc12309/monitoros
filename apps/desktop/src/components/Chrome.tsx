@@ -28,10 +28,10 @@ function Clock() {
 export function TopNav() {
   const { page, navigate } = useApp();
   return (
-    <header className="flex h-[88px] shrink-0 items-center gap-8 px-10">
+    <header data-nav-region="top" className="flex h-[5.5rem] shrink-0 items-center gap-8 px-10">
       <div className="flex items-center gap-3">
         <Logo className="h-8 w-12" />
-        <span className="text-[28px] font-bold tracking-tight text-white">MonitorOS</span>
+        <span className="text-[1.75rem] font-bold tracking-tight text-white">MonitorOS</span>
       </div>
       <nav className="ml-6 flex items-center gap-1" aria-label="Primary">
         {NAV.map((n) => {
@@ -41,7 +41,7 @@ export function TopNav() {
               key={n.label}
               data-nav-row="topnav"
               onClick={() => navigate(n.page)}
-              className={`tv-focus rounded-full px-6 py-2.5 text-[19px] font-medium transition ${active ? "bg-white/12 text-white" : "text-white/70 hover:text-white"}`}
+              className={`tv-focus whitespace-nowrap rounded-full px-6 py-2.5 text-[1.1875rem] font-medium transition ${active ? "bg-white/12 text-white" : "text-white/70 hover:text-white"}`}
             >
               {n.label}
             </button>
@@ -76,7 +76,7 @@ const RAIL: { label: string; icon: typeof HomeIcon; page: Page }[] = [
 export function Sidebar() {
   const { page, navigate, setMode, mode } = useApp();
   return (
-    <aside className="flex w-[104px] shrink-0 flex-col items-center gap-3 bg-ink-900/80 py-6">
+    <aside className="flex w-[6.5rem] shrink-0 flex-col items-center gap-3 bg-ink-900/80 py-6">
       <div className="mb-6 grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent to-accent-pink shadow-lg shadow-accent/30">
         <span className="text-lg font-black text-white">M</span>
       </div>
@@ -90,7 +90,7 @@ export function Sidebar() {
             aria-label={label}
             title={label}
             onClick={() => navigate(p)}
-            className={`tv-focus grid h-[72px] w-[78px] place-items-center rounded-2xl transition ${active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"}`}
+            className={`tv-focus grid h-[4.5rem] w-[4.875rem] place-items-center rounded-2xl transition ${active ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"}`}
           >
             <Icon className="h-8 w-8" />
           </button>
@@ -106,7 +106,7 @@ export function Sidebar() {
         <span className="grid h-16 w-16 place-items-center rounded-full bg-ink-700/80">
           <MonitorIcon className="h-8 w-8" />
         </span>
-        <span className="text-[15px]">{mode === "tv" ? "Desktop" : "TV Mode"}</span>
+        <span className="text-[0.9375rem]">{mode === "tv" ? "Desktop" : "TV Mode"}</span>
       </button>
     </aside>
   );
@@ -128,7 +128,7 @@ export function Toasts() {
 export function SectionTitle({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
     <div className="mb-4 flex items-end justify-between pr-10">
-      <h2 className="text-[28px] font-bold tracking-tight text-white">{children}</h2>
+      <h2 className="text-[1.75rem] font-bold tracking-tight text-white">{children}</h2>
       {action}
     </div>
   );

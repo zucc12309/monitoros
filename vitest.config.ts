@@ -8,8 +8,9 @@ export default defineConfig({
     alias: Object.fromEntries(["contracts", "provider-sdk", "metadata", "player"].map((n) => [`@monitoros/${n}`, pkg(n)])),
   },
   test: {
-    include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.{ts,tsx}", "tests/{integration,security}/**/*.test.ts"],
-    environment: "node",
-    environmentMatchGlobs: [["apps/desktop/src/**", "jsdom"]],
+    projects: [
+      { extends: true, test: { name: "node", environment: "node", include: ["packages/*/src/**/*.test.ts", "apps/remote/src/**/*.test.{ts,tsx}", "tests/{integration,security}/**/*.test.ts"] } },
+      { extends: true, test: { name: "desktop", environment: "jsdom", include: ["apps/desktop/src/**/*.test.{ts,tsx}"] } },
+    ],
   },
 });

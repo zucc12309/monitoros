@@ -1,12 +1,17 @@
 /**
  * Cinemeta (Stremio's official metadata add-on) as the default metadata
- * source. Read-only, no API key, CORS-enabled. TMDB can replace it when the
- * user supplies their own token (see tmdb.ts).
+ * source. Read-only, no API key, CORS-enabled.
  */
 import type { MediaItem } from "@monitoros/contracts";
 import { canonicalId } from "@monitoros/contracts";
 import { metaToMediaItem, paletteFor, type JsonFetcher, type StremioMeta } from "@monitoros/provider-sdk";
 import type { SeedEntry } from "./seed";
+import { CatalogCache, type CatalogStorage, type CatalogPage } from "./catalog-cache";
+
+export interface CatalogQuery { type: "movie" | "series"; catalog?: "top" | "year"; year?: number; skip?: number }
+// Direct destination advertised by Cinemeta; keep the guarded fetcher redirect-free.
+export const CINEMETA_CATALOG_BASE = "https://cinemeta-catalogs.strem.io";
+const PAGE_SIZE = 50;
 
 export const CINEMETA_BASE = "https://v3-cinemeta.strem.io";
 const TIMEOUT = 8000;
@@ -30,7 +35,59 @@ export function seedToItem(e: SeedEntry): MediaItem {
 export class Cinemeta {
   private cache = new Map<string, Promise<MediaItem>>();
 
-  constructor(private readonly fetchJson: JsonFetcher) {}
+  private pages: CatalogCache;
+  constructor(private readonly fetchJson: JsonFetcher, storage?: CatalogStorage) {
+    this.pages = new CatalogCache(storage);
+  }
+
+  private catalogUrl(q: CatalogQuery): string {
+    const catalog = q.catalog ?? "top";
+    const skip = q.skip ?? 0;
+    if (!Number.isSafeInteger(skip) || skip < 0) throw new Error("Invalid catalog offset");
+    const extra: string[] = [];
+    if (catalog === "year") {
+      const year = q.year ?? new Date().getFullYear();
+      if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1) throw new Error("Invalid catalog year");
+      extra.push(`genre=${year}`);
+    }
+    if (skip) extra.push(`skip=${skip}`);
+    return `${CINEMETA_CATALOG_BASE}/${catalog}/catalog/${q.type}/${catalog}${extra.length ? "/" + extra.join("&") : ""}.json`;
+  }
+
+  cachedCatalog(q: CatalogQuery): Promise<CatalogPage | undefined> {
+    return this.pages.peek(this.catalogUrl(q));
+  }
+
+  catalog(q: CatalogQuery): Promise<CatalogPage> {
+    const url = this.catalogUrl(q);
+    return this.pages.get(url, async () => {
+      const data = await this.fetchJson(url, "addon", TIMEOUT) as { metas?: unknown[] } | null;
+      if (!data || !Array.isArray(data.metas)) throw new Error("Invalid Cinemeta catalog response");
+      const items: MediaItem[] = [];
+      for (const raw of data.metas.slice(0, 100)) {
+        try {
+          const m = raw as StremioMeta;
+          if (!m || typeof m.id !== "string" || typeof m.name !== "string" || !m.name || m.type !== q.type) continue;
+          const item = metaToMediaItem(m, "cinemeta");
+          if (!Array.isArray(item.genres) || !Array.isArray(item.languages)) continue;
+          // Episode lists are loaded on the detail page, not duplicated in every catalog cache page.
+          item.episodes = undefined;
+          if (!items.some(i => i.id === item.id)) items.push(item);
+        } catch { /* Skip malformed provider entries, not the whole page. */ }
+      }
+      if (data.metas.length && !items.length) throw new Error("Cinemeta returned no valid titles");
+      // Cinemeta can omit entries within a 50-slot page. Only an empty page ends pagination.
+      return { items, nextSkip: data.metas.length ? (q.skip ?? 0) + PAGE_SIZE : null };
+    });
+  }
+
+  async details(item: MediaItem): Promise<MediaItem> {
+    if (!item.ids.imdb) return item;
+    const type = item.type === "movie" ? "movie" : "series";
+    const data = await this.fetchJson(`${CINEMETA_BASE}/meta/${type}/${item.ids.imdb}.json`, "addon", TIMEOUT) as { meta?: StremioMeta };
+    if (!data.meta?.id || !data.meta.name) return item;
+    return { ...metaToMediaItem(data.meta, "cinemeta"), type: item.type, tags: item.tags, availability: item.availability };
+  }
 
   /** Enrich a seed with live metadata; on failure, return the offline seed. */
   enrich(e: SeedEntry): Promise<MediaItem> {

@@ -65,3 +65,13 @@ See `apps/desktop/src-tauri/src/services.rs`. The default is a full-screen in-ap
   - Unsigned local builds run after right-click › Open.
 - **Windows:** `scripts/windows/build.ps1` produces MSI and NSIS installers. The installer bootstraps WebView2 if missing. Code-sign with `bundle.windows.certificateThumbprint`.
 - **mpv** is not bundled (GPL/LGPL licensing and size). The app finds it in Homebrew, `/Applications/mpv.app`, Program Files, scoop, PATH, or next to the executable.
+
+## Live discovery catalogs
+
+Movies and Series browse Cinemeta's live popular catalogs, with a Load more control that requests the next 50-slot page. Short pages do not end browsing (Cinemeta can omit records); an empty or entirely repeated page ends it. Concurrent requests are coalesced, overlapping titles are deduplicated, and failed page loads retain the existing grid and retry the same offset.
+
+The hero and general trending rows use live popular feeds. New Movies & Shows interleaves both current-year catalogs; the year is calculated at request time. Regional and anime collections remain editorial picks because Cinemeta does not advertise reliable regional/anime filters. Metadata discovery does not imply streaming availability. Detail pages fetch full metadata for any IMDb title, including titles outside the seed list.
+
+Catalogs are fetched directly from `https://cinemeta-catalogs.strem.io`, the destination of Cinemeta's catalog redirects, without relaxing the guarded fetcher's redirect policy. Search and title details continue to use `https://v3-cinemeta.strem.io`.
+
+Pages are cached under `catalog-cache` (SQLite in Tauri, localStorage in browser preview), keyed by feed, type, year and offset. Freshness is six hours, with refresh checks while the page is open, when it becomes visible, and on reconnect. Cached pages display immediately; stale pages are retained for up to seven days on network failure. The cache is bounded to 32 pages and 2 MiB of serialized UTF-8 data (below the native 4 MiB limit). Failed disk writes do not prevent browsing; a cold offline start uses seed titles. Catalog pages omit episode lists to keep storage small.

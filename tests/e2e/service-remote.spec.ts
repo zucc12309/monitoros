@@ -107,6 +107,49 @@ test("Down reaches the next row even when it's just off-screen; Left/Right stay 
   expect(await focusedId(page)).toBe("faq");
 });
 
+// Netflix-like: picking a title opens a preview pop-up over the grid, which
+// stays in the DOM behind it.
+const NF_MODAL = `<!doctype html><html><body style="margin:0;background:#141414;color:#fff">
+<div style="display:flex;gap:10px;padding:20px">${[0, 1, 2, 3].map((i) => `<a href="#" id="t${i}" style="display:block;width:240px;height:135px;background:#333"></a>`).join("")}</div>
+<div style="display:flex;gap:10px;padding:20px">${[4, 5, 6, 7].map((i) => `<a href="#" id="t${i}" style="display:block;width:240px;height:135px;background:#333"></a>`).join("")}</div>
+<script>
+  window.log = [];
+  const open = () => {
+    const m = document.createElement('div');
+    m.id = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
+    m.style.cssText = 'position:fixed;left:300px;top:60px;width:700px;height:560px;background:#181818';
+    m.innerHTML = '<button id="close" data-uia="previewModal-closebtn" aria-label="close" style="position:absolute;right:10px;top:10px">x</button>' +
+      '<button id="play" style="margin:200px 0 0 30px">Play</button><button id="add">My List</button>' +
+      '<div style="margin:30px">' + [1, 2, 3].map(e => '<button id="ep' + e + '" style="display:block;margin:8px 0;width:600px">Episode ' + e + '</button>').join('') + '</div>';
+    m.querySelector('#close').onclick = () => { m.remove(); window.log.push('closed'); };
+    m.querySelector('#ep2').onclick = () => window.log.push('play:ep2');
+    document.body.appendChild(m);
+  };
+  document.querySelectorAll('a').forEach(a => a.addEventListener('click', e => { e.preventDefault(); open(); }));
+</script></body></html>`;
+
+test("Netflix-style pop-up: D-pad stays inside it, OK picks an episode, Back closes only the pop-up", async ({ page }) => {
+  await openFixture(page, "nfmodal.test", NF_MODAL);
+  await remote(page, { type: "nav", key: "down" });
+  await remote(page, { type: "nav", key: "ok" }); // open a series
+  await expect(page.locator("#modal")).toBeVisible();
+  for (let i = 0; i < 6; i++) {
+    await remote(page, { type: "nav", key: "down" });
+    const id = await focusedId(page);
+    expect(await page.evaluate((id) => !!document.getElementById(id!)?.closest("#modal"), id), `focus escaped the pop-up to ${id}`).toBe(true);
+  }
+  await remote(page, { type: "nav", key: "up" });
+  expect(await focusedId(page)).toBe("ep2");
+  await remote(page, { type: "nav", key: "ok" });
+  expect(await log(page)).toContain("play:ep2");
+  await page.route("https://monitoros.invalid/**", (r) => r.fulfill({ body: "closed" }));
+  await remote(page, { type: "nav", key: "back" });
+  await expect(page.locator("#modal")).toHaveCount(0);
+  expect(page.url()).toBe("https://nfmodal.test/"); // still in the app
+  await remote(page, { type: "nav", key: "down" });
+  expect(await focusedId(page)).toMatch(/^t/); // back on the grid
+});
+
 test("during playback, arrows/OK/play-pause/seek go to the player as keys", async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).startPlayer());

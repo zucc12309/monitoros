@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MediaItem, MediaType } from "@monitoros/contracts";
 import { FREE_PROVIDERS, SUBSCRIPTION_SERVICES, accessLabel, launchUrl } from "@monitoros/metadata";
-import { PosterCard } from "../components/Media";
+import { BrandLogo, PosterCard, brandBackground } from "../components/Media";
 import { SectionTitle } from "../components/Chrome";
 import { CheckIcon, ExternalIcon } from "../components/icons";
 import { searchAll, useFreeItems, useTypeItems } from "../lib/catalog";
@@ -23,13 +23,16 @@ function Grid({ items, row, badge }: { items: MediaItem[]; row: string; badge?: 
 }
 
 export function BrowsePage({ kind }: { kind: "movie" | "series" | "anime" }) {
-  const items = useTypeItems(kind as MediaType);
+  const { items, loading, hasMore, error, loadMore } = useTypeItems(kind as MediaType);
   const title = kind === "movie" ? "Movies" : kind === "series" ? "Series" : "Anime";
   return (
     <div className="pb-16 pl-10 pt-2">
       <SectionTitle>{title}</SectionTitle>
-      <p className="-mt-2 mb-6 text-lg text-white/50">Editor's picks with live metadata from Cinemeta. Use Search for everything else.</p>
+      <p className="-mt-2 mb-6 text-lg text-white/50">{kind === "anime" ? "Curated anime with live metadata from Cinemeta." : "Latest and popular titles from Cinemeta, updated automatically. Use Search to find a specific title."}</p>
       <Grid items={items} row={`browse-${kind}`} />
+      {error && <p role="status" className="mt-6 text-lg text-white/50">{error}</p>}
+      {loading && <p role="status" className="mt-6 text-lg text-white/50">Loading titles…</p>}
+      {hasMore && <button data-nav-row="browse-more" aria-disabled={loading} onClick={() => { if (!loading) loadMore(); }} className="tv-focus mt-8 rounded-xl bg-white/10 px-6 py-3 text-lg text-white">{loading ? "Loading…" : error?.startsWith("Couldn't") ? "Try again" : "Load more"}</button>}
     </div>
   );
 }
@@ -59,12 +62,18 @@ export function SearchPage({ initial }: { initial?: string }) {
       return;
     }
     setLoading(true);
+    // Typing (especially mirrored from the phone) starts several searches;
+    // only the latest may update the results, or "big" can overwrite "big boss".
+    let stale = false;
     const t = setTimeout(() => {
       searchAll(query, freeOnly)
-        .then(setRes)
-        .finally(() => setLoading(false));
+        .then((r) => !stale && setRes(r))
+        .finally(() => !stale && setLoading(false));
     }, 350);
-    return () => clearTimeout(t);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
   }, [q, freeOnly]);
 
   const items = (res?.items ?? []).filter((i) => type === "all" || i.type === type);
@@ -76,7 +85,7 @@ export function SearchPage({ initial }: { initial?: string }) {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search movies, series, actors, directors, genres…"
-        className="tv-focus w-[min(900px,90%)] rounded-2xl bg-ink-800 px-7 py-5 text-2xl text-white placeholder:text-white/35 outline-none"
+        className="tv-focus w-[min(56.25rem,90%)] rounded-2xl bg-ink-800 px-7 py-5 text-2xl text-white placeholder:text-white/35 outline-none"
         aria-label="Search"
       />
       <div className="mt-5 flex flex-wrap gap-3">
@@ -102,19 +111,20 @@ export function AppsPage() {
   return (
     <div className="pb-16 pl-10 pt-2 pr-10">
       <SectionTitle>Streaming Apps</SectionTitle>
-      <p className="-mt-2 mb-6 max-w-[900px] text-lg text-white/50">Apps open in their official website (or app) so DRM, sign-in and 4K rules stay with the provider. MonitorOS never asks for your streaming passwords.</p>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-5">
+      <p className="-mt-2 mb-6 max-w-[56.25rem] text-lg text-white/50">Apps open full screen inside MonitorOS (or in Chrome, see Settings › Playback), playing through each service's own player so DRM, sign-in and 4K rules stay with the provider. MonitorOS never asks for your streaming passwords.</p>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(18.75rem,1fr))] gap-5">
         {SUBSCRIPTION_SERVICES.map((s, idx) => {
           const mine = settings.subscriptions.includes(s.id);
           const row = `apps-${Math.floor(idx / 4)}`;
           return (
             <div key={s.id} className="rounded-2xl bg-ink-800 p-4">
-              <button data-nav-row={row} onClick={() => void launchService(launchUrl(s), s.name)} className="tv-focus grid h-24 w-full place-items-center rounded-xl text-3xl font-extrabold" style={{ background: s.brand.accent ? `linear-gradient(120deg, ${s.brand.bg}, ${s.brand.accent})` : s.brand.bg, color: s.brand.fg }}>
+              <button data-nav-row={row} onClick={() => void launchService(launchUrl(s), s.name)} className="tv-focus flex h-24 w-full items-center justify-center gap-4 rounded-xl text-3xl font-extrabold" style={{ background: brandBackground(s.brand), color: s.brand.fg }}>
+                <BrandLogo service={s} className="h-14 w-14" />
                 {s.name}
               </button>
               <div className="mt-3 flex items-center justify-between text-white/70">
                 <span className="text-sm">{s.regions.includes("*") ? "Global" : s.regions.join(", ")}{s.drm ? " · DRM" : ""}</span>
-                <button data-nav-row={row} onClick={() => toggle(s.id)} className={`tv-focus flex items-center gap-2 rounded-full px-4 py-1.5 text-sm ${mine ? "bg-accent text-white" : "bg-white/10"}`}>
+                <button data-nav-row={row} aria-label={mine ? `Subscribed to ${s.name}` : `Subscribe to ${s.name}`} onClick={() => toggle(s.id)} className={`tv-focus flex items-center gap-2 rounded-full px-4 py-1.5 text-sm ${mine ? "bg-accent text-white" : "bg-white/10"}`}>
                   {mine && <CheckIcon className="h-4 w-4" />} {mine ? "Subscribed" : "I subscribe"}
                 </button>
               </div>
@@ -132,10 +142,10 @@ export function FreePage() {
   return (
     <div className="pb-16 pl-10 pt-2">
       <SectionTitle>Watch Free</SectionTitle>
-      <p className="-mt-2 mb-6 max-w-[900px] text-lg text-white/50">Only sources with a stated right to stream. Each title shows how it is free: public domain, free with ads, or public broadcasting.</p>
+      <p className="-mt-2 mb-6 max-w-[56.25rem] text-lg text-white/50">Only sources with a stated right to stream. Each title shows how it is free: public domain, free with ads, or public broadcasting.</p>
       <div className="mb-10 flex flex-wrap gap-4 pr-10">
         {FREE_PROVIDERS.map((p) => (
-          <button key={p.id} data-nav-row="free-providers" onClick={() => void launchService(p.web, p.name)} className="tv-focus w-[330px] rounded-2xl bg-ink-800 p-5 text-left text-white">
+          <button key={p.id} data-nav-row="free-providers" onClick={() => void launchService(p.web, p.name)} className="tv-focus w-[20.625rem] rounded-2xl bg-ink-800 p-5 text-left text-white">
             <div className="flex items-center justify-between">
               <span className="text-xl font-bold">{p.name}</span>
               <span className={`rounded-full px-3 py-0.5 text-sm ${p.access === "free" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>{p.access === "free" ? "Free" : "Free with ads"}</span>

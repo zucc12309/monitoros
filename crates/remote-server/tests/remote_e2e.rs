@@ -171,3 +171,31 @@ async fn pwa_page_is_never_served_stale() {
     assert!(asset.headers()["cache-control"].to_str().unwrap().contains("immutable"));
     std::fs::remove_dir_all(dir).ok();
 }
+
+#[tokio::test]
+async fn expired_connected_device_cannot_dispatch() {
+    let mut h = harness().await;
+    let token = pair(&mut h).await;
+    let mut s = ws(&h, &h.url.clone()).await.unwrap();
+    s.send(Message::Text(serde_json::json!({"auth":token}).to_string())).await.unwrap();
+    assert_eq!(next_json(&mut s).await["ok"], true);
+    let mut devices = h.pairing.lock().unwrap().devices();
+    devices[0].expires_ms = monitoros_core::now_ms().saturating_sub(1);
+    *h.pairing.lock().unwrap() = PairingManager::with_devices(devices);
+    s.send(Message::Text(r#"{"seq":1,"sentAt":0,"command":{"type":"nav","key":"up"}}"#.into())).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(h.commands.try_recv().is_err(), "expired connection dispatched native input");
+}
+
+#[tokio::test]
+async fn stopping_server_disables_existing_connections() {
+    let mut h = harness().await;
+    let token = pair(&mut h).await;
+    let mut s = ws(&h, &h.url.clone()).await.unwrap();
+    s.send(Message::Text(serde_json::json!({"auth":token}).to_string())).await.unwrap();
+    assert_eq!(next_json(&mut s).await["ok"], true);
+    tokio::time::timeout(Duration::from_secs(2), h._handle.stop()).await.unwrap();
+    let _ = s.send(Message::Text(r#"{"seq":1,"sentAt":0,"command":{"type":"nav","key":"up"}}"#.into())).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(h.commands.try_recv().is_err(), "disabled remote still dispatched native input");
+}

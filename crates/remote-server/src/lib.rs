@@ -69,11 +69,13 @@ struct AppState {
     events: mpsc::Sender<ServerEvent>,
     status: watch::Receiver<serde_json::Value>,
     pair_limiter: Arc<Mutex<RateLimiter>>,
+    /// Flips to true when the server is stopped: open sessions close at once.
+    stopped: watch::Receiver<bool>,
 }
 
 pub struct ServerHandle {
     pub addr: SocketAddr,
-    shutdown: Option<tokio::sync::oneshot::Sender<()>>,
+    shutdown: watch::Sender<bool>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -82,10 +84,9 @@ impl ServerHandle {
         format!("http://{}", self.addr)
     }
 
-    pub async fn stop(mut self) {
-        if let Some(tx) = self.shutdown.take() {
-            let _ = tx.send(());
-        }
+    /// Stops accepting connections and disconnects every connected phone.
+    pub async fn stop(self) {
+        let _ = self.shutdown.send(true);
         let _ = self.task.await;
     }
 }
@@ -111,6 +112,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<ServerHandle> {
     }
     let listener = tokio::net::TcpListener::bind((cfg.bind_ip, cfg.port)).await?;
     let addr = listener.local_addr()?;
+    let (shutdown, stopped) = watch::channel(false);
     let state = AppState {
         host: addr.to_string(),
         pairing: cfg.pairing,
@@ -118,6 +120,7 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<ServerHandle> {
         events: cfg.events,
         status: cfg.status,
         pair_limiter: Arc::new(Mutex::new(RateLimiter::new(10, 1, now_ms()))),
+        stopped: stopped.clone(),
     };
 
     let mut app = Router::new()
@@ -134,15 +137,15 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<ServerHandle> {
         .layer(middleware::from_fn(security_headers))
         .with_state(state);
 
-    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let mut on_stop = stopped;
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = rx.await;
+            .with_graceful_shutdown(async move {
+                let _ = on_stop.wait_for(|s| *s).await;
             })
             .await;
     });
-    Ok(ServerHandle { addr, shutdown: Some(tx), task })
+    Ok(ServerHandle { addr, shutdown, task })
 }
 
 async fn security_headers(req: Request<Body>, next: Next) -> Response {
@@ -263,6 +266,7 @@ async fn ws_session(s: AppState, socket: WebSocket) {
     let mut status = s.status.clone();
     let mut heartbeat = tokio::time::interval(Duration::from_secs(15));
     let mut last_pong = tokio::time::Instant::now();
+    let mut stopped = s.stopped.clone();
 
     loop {
         tokio::select! {
@@ -274,8 +278,9 @@ async fn ws_session(s: AppState, socket: WebSocket) {
                     Message::Close(_) => break,
                     _ => continue,
                 };
-                // Re-check the token on every message so revocation is immediate.
-                if !s.pairing.lock().unwrap().devices().iter().any(|d| d.id == device.id) {
+                // Re-check on every message: revocation, expiry and stopping
+                // the server take effect immediately, even mid-session.
+                if *s.stopped.borrow() || !s.pairing.lock().unwrap().is_active(&device.id, now_ms()) {
                     break;
                 }
                 let ack = match parse_envelope(&text) {
@@ -295,6 +300,13 @@ async fn ws_session(s: AppState, socket: WebSocket) {
                 };
                 let msg = serde_json::json!({ "type": "ack", "seq": ack.seq, "ok": ack.ok, "error": ack.error });
                 if tx.send(Message::Text(msg.to_string())).await.is_err() { break }
+            }
+            res = stopped.changed() => {
+                let stop = res.is_err() || *stopped.borrow();
+                if stop {
+                    let _ = tx.send(Message::Close(None)).await;
+                    break;
+                }
             }
             changed = status.changed() => {
                 if changed.is_err() { break }

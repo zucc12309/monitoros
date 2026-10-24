@@ -140,8 +140,36 @@
     el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }
 
+  // A pop-up over the page (Netflix's title preview, sign-in prompts, menus).
+  // While one is open the D-pad stays inside it and Back closes it.
+  function activeDialog() {
+    const dialogs = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog[open]')].filter((d) => {
+      const r = d.getBoundingClientRect();
+      return r.width > 200 && r.height > 150 && visible(d, 0.5);
+    });
+    return dialogs[dialogs.length - 1] || null;
+  }
+
+  function closeDialog(d) {
+    const close = [...d.querySelectorAll('[data-uia*="close" i], [aria-label*="close" i], [aria-label*="dismiss" i], button[class*="close" i]')].find((e) => visible(e, 0));
+    if (close) clickEl(close);
+    else {
+      sendKey("back", d);
+      sendKey("back", document.body);
+    }
+    if (current && d.contains(current)) {
+      current.classList.remove("__mo-focus");
+      current = null;
+    }
+  }
+
   function navigate(dir) {
-    const candidates = [...document.querySelectorAll(FOCUSABLE)].filter((e) => e !== current && visible(e, 1.5));
+    const scope = activeDialog() || document;
+    if (current && scope !== document && !scope.contains(current)) {
+      current.classList.remove("__mo-focus");
+      current = null; // entering the pop-up: start inside it
+    }
+    const candidates = [...scope.querySelectorAll(FOCUSABLE)].filter((e) => e !== current && visible(e, 1.5));
     if (!candidates.length) return false;
     if (!current || !current.isConnected || !visible(current, 0.5)) {
       // Start nearest the top-left of the content area.
@@ -259,6 +287,8 @@
           // TV-app behaviour: Back leaves the player first, otherwise it
           // closes the app (so apps are never left running in the background).
           if (document.fullscreenElement) return document.exitFullscreen();
+          const dialog = activeDialog();
+          if (dialog) return closeDialog(dialog);
           if (WATCH_PATH.test(location.pathname) && !atEntry() && history.length > 1) return history.back();
           location.href = CLOSE_URL;
           return;

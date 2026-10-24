@@ -8,17 +8,23 @@
 import type { MediaItem, ProviderCategory, SubscriptionService } from "@monitoros/contracts";
 import { assertSafeUrl } from "@monitoros/provider-sdk";
 
+/** The site's official app icon, at high resolution, via Google's favicon service. */
+const siteIcon = (domain: string) => ({ src: `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain}&size=256` });
+
+// Simple Icons "Netflix" (CC0-1.0, source: brand.netflix.com). The site icon is only 64 px.
+const NETFLIX_N = "m5.398 0 8.348 23.602c2.346.059 4.856.398 4.856.398L10.113 0H5.398zm8.489 0v9.172l4.715 13.33V0h-4.715zM5.398 1.5V24c1.873-.225 2.81-.312 4.715-.398V14.83L5.398 1.5z";
+
 export const SUBSCRIPTION_SERVICES: SubscriptionService[] = [
-  { id: "netflix", name: "Netflix", brand: { bg: "#f5f5f5", fg: "#e50914" }, web: "https://www.netflix.com/browse", searchUrl: "https://www.netflix.com/search?q={title}", regions: ["*"], drm: true },
-  { id: "prime", name: "Prime Video", brand: { bg: "#0f79af", fg: "#ffffff", accent: "#1a98ff" }, web: "https://www.primevideo.com/", searchUrl: "https://www.primevideo.com/search/?phrase={title}", regions: ["*"], drm: true },
-  { id: "jiohotstar", name: "JioHotstar", brand: { bg: "#1f6bff", fg: "#ffffff", accent: "#e535c9" }, web: "https://www.hotstar.com/in", regions: ["IN"], drm: true },
-  { id: "sonyliv", name: "Sony LIV", brand: { bg: "#140a2e", fg: "#ffffff", accent: "#f5a623" }, web: "https://www.sonyliv.com/", regions: ["IN"], drm: true },
-  { id: "zee5", name: "ZEE5", brand: { bg: "#000000", fg: "#ffffff", accent: "#8230c6" }, web: "https://www.zee5.com/", searchUrl: "https://www.zee5.com/search?q={title}", regions: ["IN"], drm: true },
-  { id: "youtube", name: "YouTube", brand: { bg: "#f5f5f5", fg: "#ff0000" }, web: "https://www.youtube.com/", searchUrl: "https://www.youtube.com/results?search_query={title}", regions: ["*"], drm: false },
-  { id: "appletv", name: "Apple TV", brand: { bg: "#1c1c1e", fg: "#ffffff" }, web: "https://tv.apple.com/", searchUrl: "https://tv.apple.com/search?term={title}", regions: ["*"], drm: true },
+  { id: "netflix", name: "Netflix", brand: { bg: "#141414", fg: "#ffffff" }, web: "https://www.netflix.com/browse", searchUrl: "https://www.netflix.com/search?q={title}", logo: { svgPath: NETFLIX_N, color: "#E50914" }, regions: ["*"], drm: true },
+  { id: "prime", name: "Prime Video", brand: { bg: "#0f79af", fg: "#ffffff", accent: "#1a98ff" }, web: "https://www.primevideo.com/", searchUrl: "https://www.primevideo.com/search/?phrase={title}", logo: siteIcon("primevideo.com"), regions: ["*"], drm: true },
+  { id: "jiohotstar", name: "JioHotstar", brand: { bg: "#1f6bff", fg: "#ffffff", accent: "#e535c9" }, web: "https://www.hotstar.com/in", logo: siteIcon("hotstar.com"), regions: ["IN"], drm: true },
+  { id: "sonyliv", name: "Sony LIV", brand: { bg: "#140a2e", fg: "#ffffff", accent: "#f5a623" }, web: "https://www.sonyliv.com/", logo: siteIcon("sonyliv.com"), regions: ["IN"], drm: true },
+  { id: "zee5", name: "ZEE5", brand: { bg: "#000000", fg: "#ffffff", accent: "#8230c6" }, web: "https://www.zee5.com/", searchUrl: "https://www.zee5.com/search?q={title}", logo: siteIcon("zee5.com"), regions: ["IN"], drm: true },
+  { id: "youtube", name: "YouTube", brand: { bg: "#f5f5f5", fg: "#ff0000" }, web: "https://www.youtube.com/", searchUrl: "https://www.youtube.com/results?search_query={title}", logo: siteIcon("youtube.com"), regions: ["*"], drm: false },
+  { id: "appletv", name: "Apple TV", brand: { bg: "#1c1c1e", fg: "#ffffff" }, web: "https://tv.apple.com/", searchUrl: "https://tv.apple.com/search?term={title}", logo: siteIcon("tv.apple.com"), regions: ["*"], drm: true },
   { id: "sunnxt", name: "Sun NXT", brand: { bg: "#111111", fg: "#f7b500" }, web: "https://www.sunnxt.com/", regions: ["IN"], drm: true },
-  { id: "aha", name: "aha", brand: { bg: "#ff6c00", fg: "#ffffff" }, web: "https://www.aha.video/", regions: ["IN"], drm: true },
-  { id: "hoichoi", name: "hoichoi", brand: { bg: "#0b0b0b", fg: "#e30613" }, web: "https://www.hoichoi.tv/", regions: ["IN"], drm: true },
+  { id: "aha", name: "aha", brand: { bg: "#111111", fg: "#ff6c00" }, web: "https://www.aha.video/", logo: { src: "https://www.aha.video/icon.svg" }, regions: ["IN"], drm: true },
+  { id: "hoichoi", name: "hoichoi", brand: { bg: "#0b0b0b", fg: "#e30613" }, web: "https://www.hoichoi.tv/", logo: siteIcon("hoichoi.tv"), regions: ["IN"], drm: true },
 ];
 
 export interface FreeProviderInfo {

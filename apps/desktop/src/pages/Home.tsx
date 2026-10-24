@@ -46,7 +46,7 @@ function FreeRow() {
           {items.slice(0, 20).map((i) => (
             <PosterCard key={i.id} item={i} row="row-free" onOpen={open} badge="Free · Public domain" />
           ))}
-          {!items.length && Array.from({ length: 7 }, (_, i) => <div key={i} className="h-[270px] w-[180px] shrink-0 animate-pulse rounded-xl bg-ink-800" />)}
+          {!items.length && Array.from({ length: 7 }, (_, i) => <div key={i} className="h-[16.875rem] w-[11.25rem] shrink-0 animate-pulse rounded-xl bg-ink-800" />)}
         </div>
       )}
     </section>

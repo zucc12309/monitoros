@@ -16,7 +16,7 @@ fn err(e: impl std::fmt::Display) -> String {
 }
 
 const KEY_RE_MAX: usize = 64;
-const ALLOWED_KEYS: &[&str] = &["settings", "watchlist", "progress", "addons"];
+const ALLOWED_KEYS: &[&str] = &["settings", "watchlist", "progress", "addons", "catalog-cache"];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

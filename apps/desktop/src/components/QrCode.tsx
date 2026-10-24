@@ -12,7 +12,7 @@ export function QrCode({ text, size = 180 }: { text: string; size?: number }) {
     return { d, n };
   }, [text]);
   return (
-    <svg viewBox={`-2 -2 ${path.n + 4} ${path.n + 4}`} width={size} height={size} className="rounded-xl bg-white" role="img" aria-label={`QR code for ${text}`}>
+    <svg viewBox={`-2 -2 ${path.n + 4} ${path.n + 4}`} style={{ width: `${size / 16}rem`, height: `${size / 16}rem` }} className="rounded-xl bg-white" role="img" aria-label={`QR code for ${text}`}>
       <path d={path.d} fill="#000" />
     </svg>
   );

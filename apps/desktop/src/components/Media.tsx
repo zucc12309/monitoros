@@ -34,7 +34,7 @@ function Art({ item, prefer, className = "" }: { item: MediaItem; prefer: "backd
 export function MediaCard({ item, row, onOpen }: { item: MediaItem; row: string; onOpen: (i: MediaItem) => void }) {
   const [logoFailed, setLogoFailed] = useState(false);
   return (
-    <button data-nav-row={row} onClick={() => onOpen(item)} className="tv-focus card group relative h-[180px] w-[290px] shrink-0 overflow-hidden rounded-xl bg-ink-800 text-left" aria-label={`${item.title}${item.year ? ` (${item.year})` : ""}`}>
+    <button data-nav-row={row} onClick={() => onOpen(item)} className="tv-focus card group relative h-[11.25rem] w-[18.125rem] shrink-0 overflow-hidden rounded-xl bg-ink-800 text-left" aria-label={`${item.title}${item.year ? ` (${item.year})` : ""}`}>
       <Art item={item} prefer="backdrop" className="absolute inset-0 h-full w-full" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 flex h-20 items-end justify-center p-3">
@@ -50,7 +50,7 @@ export function MediaCard({ item, row, onOpen }: { item: MediaItem; row: string;
 
 export function PosterCard({ item, row, onOpen, badge }: { item: MediaItem; row: string; onOpen: (i: MediaItem) => void; badge?: string }) {
   return (
-    <button data-nav-row={row} onClick={() => onOpen(item)} className="tv-focus card relative w-[180px] shrink-0 text-left" aria-label={item.title}>
+    <button data-nav-row={row} onClick={() => onOpen(item)} className="tv-focus card relative w-[11.25rem] shrink-0 text-left" aria-label={item.title}>
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-ink-800">
         <Art item={item} prefer="poster" className="h-full w-full" />
         {badge && <span className="absolute left-2 top-2 rounded-md bg-emerald-500/90 px-2 py-0.5 text-xs font-semibold text-white">{badge}</span>}
@@ -80,7 +80,7 @@ export function SkeletonRow({ variant = "card" }: { variant?: "card" | "poster" 
   return (
     <div className="flex gap-5 overflow-hidden" aria-hidden>
       {Array.from({ length: 7 }, (_, i) => (
-        <div key={i} className={`shrink-0 animate-pulse rounded-xl bg-ink-800 ${variant === "card" ? "h-[180px] w-[290px]" : "h-[270px] w-[180px]"}`} />
+        <div key={i} className={`shrink-0 animate-pulse rounded-xl bg-ink-800 ${variant === "card" ? "h-[11.25rem] w-[18.125rem]" : "h-[16.875rem] w-[11.25rem]"}`} />
       ))}
     </div>
   );
@@ -88,11 +88,11 @@ export function SkeletonRow({ variant = "card" }: { variant?: "card" | "poster" 
 
 export function ContinueCard({ entry, row, onResume }: { entry: ProgressEntry; row: string; onResume: (e: ProgressEntry) => void }) {
   return (
-    <button data-nav-row={row} onClick={() => onResume(entry)} className="tv-focus card flex h-[92px] w-[555px] shrink-0 items-center gap-6 overflow-hidden rounded-xl bg-ink-800/90 pr-6 text-left">
-      <Art item={entry.item} prefer="backdrop" className="h-full w-[158px] shrink-0 rounded-l-xl" />
+    <button data-nav-row={row} onClick={() => onResume(entry)} className="tv-focus card flex h-[5.75rem] w-[34.6875rem] shrink-0 items-center gap-6 overflow-hidden rounded-xl bg-ink-800/90 pr-6 text-left">
+      <Art item={entry.item} prefer="backdrop" className="h-full w-[9.875rem] shrink-0 rounded-l-xl" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-3">
-          <span className="truncate text-[22px] font-semibold text-white">{entry.title}</span>
+          <span className="truncate text-[1.375rem] font-semibold text-white">{entry.title}</span>
           {entry.episodeLabel && <span className="shrink-0 text-lg text-white/60">{entry.episodeLabel}</span>}
         </div>
         <div className="mt-3 flex items-center gap-5">
@@ -106,24 +106,55 @@ export function ContinueCard({ entry, row, onResume }: { entry: ProgressEntry; r
   );
 }
 
+/** A service's official logo; falls back to nothing if the image is missing or too small to look sharp. */
+export function BrandLogo({ service, className = "h-12 w-12" }: { service: SubscriptionService; className?: string }) {
+  const [ok, setOk] = useState(true);
+  const logo = service.logo;
+  if (!logo || !ok) return null;
+  if ("svgPath" in logo) {
+    return (
+      <svg viewBox="0 0 24 24" className={`shrink-0 ${className}`} aria-hidden>
+        <path d={logo.svgPath} fill={logo.color} />
+      </svg>
+    );
+  }
+  return (
+    <img
+      src={logo.src}
+      alt=""
+      aria-hidden
+      referrerPolicy="no-referrer"
+      className={`shrink-0 rounded-xl object-contain ${className}`}
+      onError={() => setOk(false)}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        // Bitmaps under 48 px would look blurry on a TV: show the name only.
+        if (!img.src.endsWith(".svg") && img.naturalWidth > 0 && img.naturalWidth < 48) setOk(false);
+      }}
+    />
+  );
+}
+
+export const brandBackground = ({ bg, accent }: SubscriptionService["brand"]) => (accent ? `linear-gradient(120deg, ${bg}, ${accent})` : bg);
+
 export function AppTile({ service, row, onOpen }: { service: SubscriptionService; row: string; onOpen: (s: SubscriptionService) => void }) {
-  const { bg, fg, accent } = service.brand;
   return (
     <button
       data-nav-row={row}
       onClick={() => onOpen(service)}
       aria-label={`Open ${service.name}`}
-      className="tv-focus card grid h-[84px] w-[208px] shrink-0 place-items-center rounded-xl text-[26px] font-extrabold tracking-tight"
-      style={{ background: accent ? `linear-gradient(120deg, ${bg}, ${accent})` : bg, color: fg }}
+      className="tv-focus card flex h-[5.25rem] min-w-[13rem] shrink-0 items-center justify-center gap-3 whitespace-nowrap rounded-xl px-6 text-[1.375rem] font-extrabold tracking-tight"
+      style={{ background: brandBackground(service.brand), color: service.brand.fg }}
     >
-      {service.name}
+      <BrandLogo service={service} className="h-12 w-12" />
+      <span>{service.name}</span>
     </button>
   );
 }
 
 export function AllAppsTile({ row, onOpen }: { row: string; onOpen: () => void }) {
   return (
-    <button data-nav-row={row} onClick={onOpen} className="tv-focus card flex h-[84px] w-[140px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-ink-800 text-white/90">
+    <button data-nav-row={row} onClick={onOpen} className="tv-focus card flex h-[5.25rem] w-[8.75rem] shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-ink-800 text-white/90">
       <GridIcon className="h-8 w-8" />
       <span className="text-lg">Apps</span>
     </button>
@@ -140,22 +171,30 @@ export function Hero({ items, onPlay, onOpen }: { items: MediaItem[]; onPlay: (i
     return () => clearInterval(t);
   }, [items.length]);
   const item = items[idx % Math.max(1, items.length)];
-  if (!item) return <div className="mr-10 h-[400px] animate-pulse rounded-3xl bg-ink-800" />;
+  if (!item) return <div className="mr-10 h-[30rem] animate-pulse rounded-3xl bg-ink-800" />;
   const inList = watchlist.some((w) => w.id === item.id);
   const meta = [item.tags?.includes("trending") ? "Trending" : null, item.year, item.genres[0]?.toLowerCase()].filter(Boolean);
   return (
     <section
-      className="relative mr-10 h-[400px] overflow-hidden rounded-3xl bg-ink-800"
+      className="relative mr-10 h-[30rem] overflow-hidden rounded-3xl bg-ink-800"
       onFocus={() => (focused.current = true)}
       onBlur={() => (focused.current = false)}
       aria-roledescription="carousel"
     >
-      <Art key={item.id} item={item} prefer="backdrop" className="absolute inset-0 h-full w-full animate-[fadein_.6s_ease]" />
+      {/* Blurred, dimmed copy fills the banner; the real image sits on the
+          right at its own 16:9 shape so nothing is cropped on any screen. */}
+      <Art key={`${item.id}-fill`} item={item} prefer="backdrop" className="absolute inset-0 h-full w-full scale-110 blur-2xl brightness-50" />
+      <div
+        className="absolute inset-y-0 right-0 aspect-video h-full max-w-full"
+        style={{ maskImage: "linear-gradient(to right, transparent, #000 30%)", WebkitMaskImage: "linear-gradient(to right, transparent, #000 30%)" }}
+      >
+        <Art key={item.id} item={item} prefer="backdrop" className="h-full w-full animate-[fadein_.6s_ease]" />
+      </div>
       <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/35 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-      <div className="relative flex h-full max-w-[720px] flex-col justify-center pl-20">
-        <h1 className="text-[64px] font-extrabold leading-[1.05] tracking-tight text-white drop-shadow-lg">{item.title}</h1>
-        <div className="mt-3 flex items-center gap-3 text-[22px] text-white/85">
+      <div className="relative flex h-full max-w-[45rem] flex-col justify-center pl-20">
+        <h1 className="text-[4rem] font-extrabold leading-[1.05] tracking-tight text-white drop-shadow-lg">{item.title}</h1>
+        <div className="mt-3 flex items-center gap-3 text-[1.375rem] text-white/85">
           {meta.map((m, i) => (
             <span key={i} className="flex items-center gap-3">
               {i > 0 && <span className="text-white/50">•</span>}
@@ -170,15 +209,15 @@ export function Hero({ items, onPlay, onOpen }: { items: MediaItem[]; onPlay: (i
             </span>
           )}
         </div>
-        {item.description && <p className="mt-4 line-clamp-2 text-[21px] leading-snug text-white/80">{item.description}</p>}
+        {item.description && <p className="mt-4 line-clamp-2 text-[1.3125rem] leading-snug text-white/80">{item.description}</p>}
         <div className="mt-7 flex gap-4">
-          <button data-nav-row="hero" data-nav-default onClick={() => onPlay(item)} className="tv-focus flex items-center gap-3 rounded-xl bg-white px-8 py-4 text-[22px] font-semibold text-black">
+          <button data-nav-row="hero" data-nav-default onClick={() => onPlay(item)} className="tv-focus whitespace-nowrap flex items-center gap-3 rounded-xl bg-white px-8 py-4 text-[1.375rem] font-semibold text-black">
             <PlayIcon className="h-6 w-6" /> Watch Now
           </button>
-          <button data-nav-row="hero" onClick={() => toggleWatchlist(item)} className="tv-focus flex items-center gap-3 rounded-xl border border-white/30 bg-black/30 px-8 py-4 text-[22px] font-medium text-white backdrop-blur">
+          <button data-nav-row="hero" onClick={() => toggleWatchlist(item)} className="tv-focus whitespace-nowrap flex items-center gap-3 rounded-xl border border-white/30 bg-black/30 px-8 py-4 text-[1.375rem] font-medium text-white backdrop-blur">
             {inList ? <CheckIcon className="h-6 w-6" /> : <PlusIcon className="h-6 w-6" />} Watchlist
           </button>
-          <button data-nav-row="hero" onClick={() => onOpen(item)} className="tv-focus rounded-xl px-5 py-4 text-[20px] text-white/80">
+          <button data-nav-row="hero" onClick={() => onOpen(item)} className="tv-focus whitespace-nowrap rounded-xl px-5 py-4 text-[1.25rem] text-white/80">
             More info
           </button>
         </div>

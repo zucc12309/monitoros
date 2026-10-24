@@ -70,7 +70,7 @@ export interface HomeRow {
 export const HOME_ROWS: HomeRow[] = [
   { id: "continue", title: "Continue Watching", kind: "continue" },
   { id: "apps", title: "Your Apps", kind: "apps" },
-  { id: "trending", title: "Trending Movies in India", tag: "trending", kind: "media" },
+  { id: "trending", title: "Trending Movies", tag: "trending", kind: "media" },
   { id: "trending-tv", title: "Trending Series", tag: "trending-tv", kind: "media" },
   { id: "free", title: "Free to Watch", kind: "free" },
   { id: "hindi", title: "Hindi Movies", tag: "hindi", kind: "media" },
@@ -78,7 +78,7 @@ export const HOME_ROWS: HomeRow[] = [
   { id: "hollywood", title: "Hollywood", tag: "hollywood", kind: "media" },
   { id: "india", title: "Popular in India", tag: "india", kind: "media" },
   { id: "anime", title: "Anime", tag: "anime", kind: "media" },
-  { id: "recent", title: "Recently Added", tag: "recent", kind: "media" },
+  { id: "recent", title: "New Movies & Shows", tag: "recent", kind: "media" },
   { id: "watchlist", title: "My Watchlist", kind: "watchlist" },
   { id: "local", title: "Local Library", kind: "local" },
   { id: "live", title: "Live TV", kind: "live" },

@@ -32,13 +32,13 @@ export function OnboardingPage() {
         <>
           <Logo className="mb-6 h-20 w-32" />
           <h1 className="text-6xl font-extrabold">Welcome to MonitorOS</h1>
-          <p className="mt-5 max-w-[760px] text-2xl text-white/65">Your computer becomes a Smart TV — and stays your computer. Switch back to the desktop any time with the Desktop button or Ctrl/Cmd + Shift + M.</p>
+          <p className="mt-5 max-w-[47.5rem] text-2xl text-white/65">Your computer becomes a Smart TV — and stays your computer. Switch back to the desktop any time with the Desktop button or Ctrl/Cmd + Shift + M.</p>
         </>
       )}
       {step === 1 && (
         <>
           <h1 className="text-5xl font-bold">What do you watch in?</h1>
-          <div className="mt-10 flex max-w-[1000px] flex-wrap justify-center gap-3">
+          <div className="mt-10 flex max-w-[62.5rem] flex-wrap justify-center gap-3">
             {LANGS.map(([code, name], i) => {
               const on = settings.languages.includes(code);
               return <button key={code} data-nav-row={`ob-lang-${Math.floor(i / 5)}`} className={chip(on)} onClick={() => updateSettings({ languages: on ? settings.languages.filter((l) => l !== code) : [...settings.languages, code] })}>{name}</button>;
@@ -50,7 +50,7 @@ export function OnboardingPage() {
         <>
           <h1 className="text-5xl font-bold">Which services do you subscribe to?</h1>
           <p className="mt-3 text-xl text-white/55">Used to sort sources and your app row. MonitorOS never asks for passwords — you sign in on each service's own site or app.</p>
-          <div className="mt-10 flex max-w-[1100px] flex-wrap justify-center gap-3">
+          <div className="mt-10 flex max-w-[68.75rem] flex-wrap justify-center gap-3">
             {SUBSCRIPTION_SERVICES.map((s, i) => {
               const on = settings.subscriptions.includes(s.id);
               return <button key={s.id} data-nav-row={`ob-subs-${Math.floor(i / 5)}`} className={chip(on)} onClick={() => updateSettings({ subscriptions: on ? settings.subscriptions.filter((x) => x !== s.id) : [...settings.subscriptions, s.id] })}>{s.name}</button>;
@@ -61,7 +61,7 @@ export function OnboardingPage() {
       {step === 3 && (
         <>
           <h1 className="text-5xl font-bold">Free to watch</h1>
-          <div className="mt-10 grid max-w-[1000px] grid-cols-2 gap-4 text-left">
+          <div className="mt-10 grid max-w-[62.5rem] grid-cols-2 gap-4 text-left">
             {FREE_PROVIDERS.map((p) => (
               <div key={p.id} className="rounded-2xl bg-ink-800 p-5">
                 <div className="text-xl font-bold">{p.name}</div>
@@ -86,7 +86,7 @@ export function OnboardingPage() {
       {step === 5 && (
         <>
           <h1 className="text-5xl font-bold">Use your iPhone as a remote</h1>
-          <p className="mt-3 max-w-[820px] text-xl text-white/55">Starts a server on your home network only. Each phone needs your approval and a code from this screen.</p>
+          <p className="mt-3 max-w-[51.25rem] text-xl text-white/55">Starts a server on your home network only. Each phone needs your approval and a code from this screen.</p>
           <button data-nav-row="ob-remote" className="tv-focus mt-10 rounded-xl bg-white px-8 py-4 text-xl font-semibold text-black" onClick={() => void (isTauri ? remoteStart().then(() => { updateSettings({ remoteEnabled: true }); navigate({ name: "settings", section: "remote" }); updateSettings({ onboarded: true }); }) : Promise.resolve(toast("The remote needs the desktop app", "error")))}>Set up remote</button>
         </>
       )}

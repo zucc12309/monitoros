@@ -50,6 +50,11 @@ export interface SubscriptionService {
   id: string;
   name: string;
   brand: { bg: string; fg: string; accent?: string };
+  /**
+   * Official logo: a vector path (24×24 viewBox, e.g. from Simple Icons, CC0)
+   * or an image URL served by the brand / its site icon. None = styled name.
+   */
+  logo?: { svgPath: string; color: string } | { src: string };
   web: string;
   /** Template with {title} placeholder, used only when no deep link is known. */
   searchUrl?: string;

@@ -4,7 +4,7 @@ import { SUBSCRIPTION_SERVICES, launchUrl } from "./services";
 import { Cinemeta, seedToItem } from "./cinemeta";
 import { InternetArchiveProvider, docToItem, pickVideoFiles } from "./internet-archive";
 import { parseM3U } from "./m3u";
-import { accessLabel, filterAndRank } from "./search";
+import { accessLabel, filterAndRank, queryVariants } from "./search";
 
 describe("seed catalogue", () => {
   it("has unique, well-formed IMDb ids", () => {
@@ -134,5 +134,24 @@ describe("search filters", () => {
 
   it("labels availability honestly", () => {
     expect(accessLabel(items[0]!, []).label).toBe("Availability unknown");
+  });
+});
+
+describe("search relevance", () => {
+  const mk = (title: string, year: number) => ({ ...seedToItem({ imdb: `tt${year}${title.length}`, type: "series", title, year, tags: [], languages: [] }), title });
+  const pool = [mk("The Big Bang Theory", 2007), mk("Big Mouth", 2017), mk("Big Boss", 2000), mk("Bigg Boss", 2006), mk("Bigg Boss Telugu", 2017), mk("Big Sky", 2020)];
+
+  it("suggests common spelling variants", () => {
+    expect(queryVariants("Big boss")).toEqual(["bigg boss"]);
+    expect(queryVariants("bigg boss")).toEqual([]); // already the variant
+    expect(queryVariants("the boys")).toEqual([]); // plurals aren't touched
+    expect(queryVariants("dil se")).toEqual(["dill se"]);
+    expect(queryVariants("")).toEqual([]);
+  });
+
+  it("ranks titles matching every word, including one-letter spelling differences, above partial matches", () => {
+    const top = filterAndRank(pool, "big boss").map((i) => i.title);
+    expect(top.slice(0, 3).sort()).toEqual(["Big Boss", "Bigg Boss", "Bigg Boss Telugu"]);
+    expect(top.indexOf("Big Mouth")).toBeGreaterThan(2);
   });
 });

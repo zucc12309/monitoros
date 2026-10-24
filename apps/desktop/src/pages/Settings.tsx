@@ -22,7 +22,7 @@ const Btn = ({ row, onClick, children, primary }: { row: string; onClick: () => 
 
 function Toggle({ row, label, value, onChange, hint }: { row: string; label: string; value: boolean; onChange: (v: boolean) => void; hint?: string }) {
   return (
-    <button data-nav-row={row} onClick={() => onChange(!value)} className="tv-focus flex w-full max-w-[760px] items-center justify-between rounded-xl bg-ink-800 px-5 py-4 text-left text-white">
+    <button data-nav-row={row} onClick={() => onChange(!value)} className="tv-focus flex w-full max-w-[47.5rem] items-center justify-between rounded-xl bg-ink-800 px-5 py-4 text-left text-white">
       <span>
         <span className="block text-lg">{label}</span>
         {hint && <span className="block text-sm text-white/45">{hint}</span>}
@@ -77,7 +77,7 @@ function Addons() {
   };
 
   return (
-    <div className="max-w-[900px]">
+    <div className="max-w-[56.25rem]">
       <p className="mb-4 text-lg text-white/55">Stremio-compatible add-ons are remote JSON services. MonitorOS validates each manifest, never runs add-on code, refuses redirects and private-network addresses, and drops torrent streams.</p>
       <div className="mb-6 flex gap-3">
         <input data-nav-row="addon-add" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://addon.example.com/manifest.json" className="tv-focus flex-1 rounded-xl bg-ink-800 px-5 py-3 text-lg text-white outline-none" aria-label="Add-on manifest URL" />
@@ -123,7 +123,7 @@ function DisplayAudio() {
   }, []);
   if (!isTauri) return <p className="text-lg text-white/50">Display and audio controls are available in the desktop app.</p>;
   return (
-    <div className="max-w-[900px] space-y-8 text-white">
+    <div className="max-w-[56.25rem] space-y-8 text-white">
       <div>
         <h3 className="mb-3 text-xl font-semibold">Displays</h3>
         {ds.map((d) => (
@@ -176,7 +176,7 @@ function Remote() {
   useEffect(refresh, []);
   if (!isTauri) return <p className="text-lg text-white/50">The iPhone remote server runs in the desktop app.</p>;
   return (
-    <div className="max-w-[900px] text-white">
+    <div className="max-w-[56.25rem] text-white">
       <p className="mb-4 text-lg text-white/55">Your iPhone must be on the same Wi-Fi. The server listens only on this computer's private LAN address and every phone needs your approval plus the code shown on the TV.</p>
       {info?.running ? (
         <div className="flex items-start gap-8">
@@ -221,7 +221,7 @@ const OPEN_MODES: { id: "app-window" | "in-app" | "browser"; label: string; hint
 function Playback() {
   const { settings, updateSettings } = useApp();
   return (
-    <div className="max-w-[760px] space-y-3 text-white">
+    <div className="max-w-[47.5rem] space-y-3 text-white">
       <h3 className="text-xl font-semibold">Open streaming apps in</h3>
       {OPEN_MODES.map((m) => (
         <button key={m.id} data-nav-row={`open-${m.id}`} onClick={() => updateSettings({ serviceOpenMode: m.id })} className={`tv-focus block w-full rounded-xl px-5 py-4 text-left ${settings.serviceOpenMode === m.id ? "bg-accent/30 ring-1 ring-accent" : "bg-ink-800"}`}>
@@ -244,7 +244,7 @@ function Playback() {
 function Startup() {
   const { settings, updateSettings, toast } = useApp();
   return (
-    <div className="max-w-[760px] space-y-3 text-white">
+    <div className="max-w-[47.5rem] space-y-3 text-white">
       <Toggle row="autostart" label="Open MonitorOS when I log in" value={settings.launchAtLogin} onChange={(v) => void setAutostart(v).then((on) => updateSettings({ launchAtLogin: on })).catch((e) => toast(String(e), "error"))} hint={isTauri ? "Adds a login item. Nothing else on your system is changed." : "Desktop app only."} />
       <Toggle row="default-mode" label="Start in TV Mode (full screen)" value={settings.defaultMode === "tv"} onChange={(v) => updateSettings({ defaultMode: v ? "tv" : "desktop" })} hint="Recovery: Ctrl/Cmd + Shift + M always switches back to Desktop Mode." />
     </div>
@@ -264,7 +264,7 @@ function Diagnostics() {
     <div className="flex justify-between border-b border-white/5 py-2"><span className="text-white/55">{k}</span><span>{v}</span></div>
   );
   return (
-    <div className="max-w-[760px] text-lg text-white">
+    <div className="max-w-[47.5rem] text-lg text-white">
       {info && (
         <>
           {line("Version", info.version)}
@@ -284,12 +284,12 @@ export function SettingsPage({ section }: { section?: string }) {
   const [active, setActive] = useState<Section>((SECTIONS as readonly string[]).includes(section ?? "") ? (section as Section) : "subscriptions");
   return (
     <div className="flex gap-10 pb-16 pl-10 pt-2">
-      <nav className="flex w-64 shrink-0 flex-col gap-1">
+      <nav data-nav-region="settings-menu" className="flex w-64 shrink-0 flex-col gap-1">
         {SECTIONS.map((s) => (
           <button key={s} data-nav-row={`settings-nav-${s}`} onClick={() => setActive(s)} onFocus={() => setActive(s)} className={`tv-focus rounded-xl px-5 py-3 text-left text-lg ${active === s ? "bg-white/12 text-white" : "text-white/60"}`}>{LABEL[s]}</button>
         ))}
       </nav>
-      <div className="min-w-0 flex-1 pr-10">
+      <div data-nav-region="settings-content" className="min-w-0 flex-1 pr-10">
         <SectionTitle>{LABEL[active]}</SectionTitle>
         {active === "subscriptions" && <Subscriptions />}
         {active === "addons" && <Addons />}

@@ -92,7 +92,7 @@ export function LibraryPage() {
       {items.length === 0 ? (
         <p className="text-lg text-white/40">No videos yet.</p>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(22.5rem,1fr))] gap-4">
           {items.map((l, idx) => (
             <button key={l.id} data-nav-row={`lib-${Math.floor(idx / 4)}`} onClick={() => play(l)} className="tv-focus flex items-center gap-4 rounded-xl bg-ink-800 p-4 text-left text-white">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-lg" style={{ background: `linear-gradient(135deg, ${paletteFor(l.title).join(",")})` }}>
@@ -149,9 +149,9 @@ export function LivePage() {
   return (
     <div className="pb-16 pl-10 pt-2 pr-10">
       <SectionTitle>Live TV</SectionTitle>
-      <p className="-mt-2 mb-5 max-w-[900px] text-lg text-white/50">Add M3U playlists you are authorised to use (your IPTV provider, Jellyfin/Plex Live TV, or a public broadcaster's official feed). For DD channels, WAVES opens from Free.</p>
+      <p className="-mt-2 mb-5 max-w-[56.25rem] text-lg text-white/50">Add M3U playlists you are authorised to use (your IPTV provider, Jellyfin/Plex Live TV, or a public broadcaster's official feed). For DD channels, WAVES opens from Free.</p>
       <div className="mb-8 flex flex-wrap items-center gap-3">
-        <input data-nav-row="live-add" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/playlist.m3u" className="tv-focus w-[560px] rounded-xl bg-ink-800 px-5 py-3 text-lg text-white outline-none" aria-label="Playlist URL" />
+        <input data-nav-row="live-add" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/playlist.m3u" className="tv-focus w-[35rem] rounded-xl bg-ink-800 px-5 py-3 text-lg text-white outline-none" aria-label="Playlist URL" />
         <label className="flex items-center gap-2 text-white/70">
           <input data-nav-row="live-add" type="checkbox" checked={allowLan} onChange={(e) => setAllowLan(e.target.checked)} className="tv-focus h-5 w-5" /> On my home network
         </label>

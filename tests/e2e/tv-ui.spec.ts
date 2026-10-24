@@ -26,7 +26,7 @@ test("home screen rows render and arrow keys move focus deterministically", asyn
   await skipOnboarding(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your Apps" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Trending Movies in India" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Trending Movies" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Netflix" })).toBeVisible();
   // All apps are on the home row, subscribed ones first (netflix, prime here).
   const tiles = await page.locator('[data-nav-row="row-apps"][aria-label^="Open "]').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));

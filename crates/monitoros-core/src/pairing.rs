@@ -157,6 +157,11 @@ impl PairingManager {
         Some(d.clone())
     }
 
+    /// Paired, not revoked and not expired: checked on every remote message.
+    pub fn is_active(&self, device_id: &str, now: u64) -> bool {
+        self.devices.get(device_id).is_some_and(|d| d.expires_ms > now)
+    }
+
     pub fn revoke(&mut self, device_id: &str) -> bool {
         self.devices.remove(device_id).is_some()
     }
@@ -218,6 +223,18 @@ mod tests {
         m.approve(&p.request_id, 0).unwrap();
         let (_, token) = m.complete(&p.request_id, &p.code, 0).unwrap();
         assert!(m.authenticate(&token, TOKEN_TTL_MS + 1).is_none());
+    }
+
+    #[test]
+    fn active_means_present_and_unexpired() {
+        let mut m = PairingManager::default();
+        let p = m.request("phone", 0).unwrap();
+        m.approve(&p.request_id, 0).unwrap();
+        let (dev, _) = m.complete(&p.request_id, &p.code, 0).unwrap();
+        assert!(m.is_active(&dev.id, 1));
+        assert!(!m.is_active(&dev.id, TOKEN_TTL_MS + 1), "expired");
+        m.revoke(&dev.id);
+        assert!(!m.is_active(&dev.id, 1), "revoked");
     }
 
     #[test]

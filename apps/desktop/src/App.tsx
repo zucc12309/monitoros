@@ -57,7 +57,7 @@ function PairingDialog() {
   if (!pending) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur" role="dialog" aria-modal aria-label="Pair a remote">
-      <div className="w-[640px] rounded-3xl bg-ink-850 p-10 text-center text-white shadow-2xl">
+      <div className="w-[40rem] rounded-3xl bg-ink-850 p-10 text-center text-white shadow-2xl">
         <p className="text-xl text-white/60">“{pending.deviceName}” wants to control this TV</p>
         {pending.approved ? (
           <>
@@ -184,7 +184,7 @@ export function App() {
       {showChrome && <Sidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
         {showChrome && <TopNav />}
-        <main ref={main} className="no-scrollbar min-h-0 flex-1 overflow-y-auto" key={pageKey(page)}>
+        <main data-nav-region="main" ref={main} className="no-scrollbar min-h-0 flex-1 overflow-y-auto" key={pageKey(page)}>
           <PageView page={page} />
         </main>
       </div>
