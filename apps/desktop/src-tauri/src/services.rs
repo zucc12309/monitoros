@@ -1,0 +1,190 @@
+//! Opening streaming services (Netflix, Prime Video, ...): spec section 6.
+//!
+//! Three ways, chosen in Settings > Playback:
+//!
+//! * `InApp` (default): a full-screen MonitorOS window using the system
+//!   WebView, with a "<- MonitorOS" button to come back. The user never leaves
+//!   MonitorOS. DRM support in system WebViews is narrower than in browsers,
+//!   so a service may refuse to play protected video here.
+//! * `AppWindow`: the user's installed Chrome/Edge/Brave in `--app` mode, full
+//!   screen without tabs or address bar. Keeps existing sign-ins and the
+//!   browser's full DRM (Widevine/PlayReady).
+//! * `Browser`: the default browser, as a normal tab.
+//!
+//! The external page never gets MonitorOS IPC: capabilities are bound to the
+//! "main" window only. MonitorOS never decrypts or captures DRM content.
+
+use serde::Deserialize;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+
+pub const SERVICE_WINDOW: &str = "service";
+
+/// The back button navigates here; MonitorOS intercepts it and closes the
+/// window. `.invalid` is reserved (RFC 2606) so it can never resolve.
+const CLOSE_URL_HOST: &str = "monitoros.invalid";
+
+/// WKWebView's default UA has no "Version/… Safari" token, so streaming sites
+/// treat it as an unsupported browser. Present as the system Safari instead.
+#[cfg(target_os = "macos")]
+const SERVICE_USER_AGENT: Option<&str> = Some("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15");
+/// WebView2 already identifies as Edge.
+#[cfg(not(target_os = "macos"))]
+const SERVICE_USER_AGENT: Option<&str> = None;
+
+/// Injected into the service page: a small "Back to MonitorOS" pill that
+/// fades out while watching. It has no IPC access — it only navigates to
+/// CLOSE_URL_HOST, which the native side intercepts.
+const BACK_BUTTON_SCRIPT: &str = r#"
+(() => {
+  if (window.top !== window || window.__monitorosBack) return;
+  window.__monitorosBack = true;
+  const add = () => {
+    if (!document.body || document.getElementById('__monitoros_back')) return;
+    const b = document.createElement('button');
+    b.id = '__monitoros_back';
+    b.textContent = '← MonitorOS';
+    b.setAttribute('aria-label', 'Back to MonitorOS');
+    b.style.cssText = 'position:fixed;top:18px;left:18px;z-index:2147483647;padding:10px 18px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(10,10,20,.72);color:#fff;font:600 15px -apple-system,system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(8px);transition:opacity .4s;opacity:1';
+    b.onclick = () => { location.href = 'https://monitoros.invalid/close'; };
+    document.body.appendChild(b);
+    let t;
+    const show = () => { b.style.opacity = '1'; clearTimeout(t); t = setTimeout(() => { b.style.opacity = '0'; }, 3500); };
+    ['mousemove', 'keydown', 'touchstart'].forEach((e) => window.addEventListener(e, show, { passive: true }));
+    show();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', add); else add();
+  new MutationObserver(add).observe(document.documentElement, { childList: true, subtree: true });
+})();
+"#;
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum OpenMode {
+    AppWindow,
+    InApp,
+    Browser,
+}
+
+pub fn find_chromium() -> Option<PathBuf> {
+    let mut c: Vec<PathBuf> = Vec::new();
+    if cfg!(target_os = "macos") {
+        for app in ["Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium"] {
+            c.push(PathBuf::from(format!("/Applications/{app}.app/Contents/MacOS/{app}")));
+            if let Ok(home) = std::env::var("HOME") {
+                c.push(PathBuf::from(format!("{home}/Applications/{app}.app/Contents/MacOS/{app}")));
+            }
+        }
+    }
+    if cfg!(windows) {
+        for var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+            if let Ok(base) = std::env::var(var) {
+                let b = PathBuf::from(base);
+                c.push(b.join(r"Google\Chrome\Application\chrome.exe"));
+                c.push(b.join(r"Microsoft\Edge\Application\msedge.exe"));
+                c.push(b.join(r"BraveSoftware\Brave-Browser\Application\brave.exe"));
+            }
+        }
+    }
+    c.into_iter().find(|p| p.is_file())
+}
+
+/// Arguments for a Chromium app window. The URL is a single argv entry
+/// (no shell), and was validated as https before reaching here.
+pub fn app_window_args(url: &str) -> Vec<String> {
+    vec![format!("--app={url}"), "--start-fullscreen".into(), "--no-first-run".into(), "--no-default-browser-check".into()]
+}
+
+pub fn open(app: &AppHandle, url: &str, mode: OpenMode) -> Result<&'static str, String> {
+    match mode {
+        OpenMode::AppWindow => match find_chromium() {
+            Some(browser) => {
+                Command::new(browser)
+                    .args(app_window_args(url))
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+                Ok("app-window")
+            }
+            // No Chromium browser installed: fall back rather than fail.
+            None => open(app, url, OpenMode::Browser).map(|_| "browser"),
+        },
+        OpenMode::InApp => {
+            close(app);
+            let parsed = url.parse().map_err(|_| "invalid URL".to_string())?;
+            let handle = app.clone();
+            let mut builder = WebviewWindowBuilder::new(app, SERVICE_WINDOW, WebviewUrl::External(parsed))
+                .title("MonitorOS")
+                .fullscreen(true)
+                .focused(true)
+                .initialization_script(BACK_BUTTON_SCRIPT)
+                .on_navigation(move |u| {
+                    if is_close_url(u) {
+                        let h = handle.clone();
+                        // Close outside the navigation callback.
+                        tauri::async_runtime::spawn(async move {
+                            close(&h);
+                        });
+                        return false;
+                    }
+                    // Keep the window on the web: no file:, javascript:, custom schemes.
+                    matches!(u.scheme(), "https" | "about" | "blob" | "data")
+                });
+            if let Some(ua) = SERVICE_USER_AGENT {
+                builder = builder.user_agent(ua);
+            }
+            builder.build().map_err(|e| e.to_string())?;
+            Ok("in-app")
+        }
+        OpenMode::Browser => {
+            tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())?;
+            Ok("browser")
+        }
+    }
+}
+
+pub fn is_close_url(u: &url::Url) -> bool {
+    u.host_str() == Some(CLOSE_URL_HOST)
+}
+
+/// Closes the in-app service window (remote Home/Back, or Ctrl/Cmd+Shift+M).
+pub fn close(app: &AppHandle) -> bool {
+    if let Some(w) = app.get_webview_window(SERVICE_WINDOW) {
+        let _ = w.close();
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.set_focus();
+        }
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_window_args_keep_url_as_one_argument() {
+        let a = app_window_args("https://www.netflix.com/browse");
+        assert_eq!(a[0], "--app=https://www.netflix.com/browse");
+        assert!(a.contains(&"--start-fullscreen".to_string()));
+    }
+
+    #[test]
+    fn back_button_url_is_recognised() {
+        assert!(is_close_url(&"https://monitoros.invalid/close".parse().unwrap()));
+        assert!(!is_close_url(&"https://www.netflix.com/browse".parse().unwrap()));
+        assert!(BACK_BUTTON_SCRIPT.contains(CLOSE_URL_HOST));
+    }
+
+    #[test]
+    fn open_mode_parses() {
+        assert_eq!(serde_json::from_str::<OpenMode>("\"app-window\"").unwrap(), OpenMode::AppWindow);
+        assert_eq!(serde_json::from_str::<OpenMode>("\"in-app\"").unwrap(), OpenMode::InApp);
+        assert!(serde_json::from_str::<OpenMode>("\"shell\"").is_err());
+    }
+}

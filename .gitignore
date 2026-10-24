@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+test-results/
+playwright-report/
+apps/desktop/src-tauri/gen/
+*.tsbuildinfo
+.claude-flow/
+test-results/

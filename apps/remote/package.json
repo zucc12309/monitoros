@@ -1,0 +1,13 @@
+{
+  "name": "@monitoros/remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 1421 --host 127.0.0.1",
+    "build": "tsc --noEmit -p . && vite build"
+  },
+  "devDependencies": {
+    "vite": "5.4.10"
+  }
+}

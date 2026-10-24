@@ -1,0 +1,37 @@
+[package]
+name = "monitoros-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MonitorOS — Smart TV environment for Windows and macOS"
+
+[lib]
+name = "monitoros_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+monitoros-core = { path = "../../../crates/monitoros-core" }
+provider-runtime = { path = "../../../crates/provider-runtime" }
+storage = { path = "../../../crates/storage" }
+media-engine = { path = "../../../crates/media-engine" }
+remote-server = { path = "../../../crates/remote-server" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+platform-macos = { path = "../../../crates/platform-macos" }
+
+[target.'cfg(windows)'.dependencies]
+platform-windows = { path = "../../../crates/platform-windows" }

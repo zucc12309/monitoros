@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  /* 1080p is the design size; scale up on 4K and down on small laptop panels. */
+  font-size: clamp(12px, calc(100vw / 1920 * 16), 32px);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: #07070d;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(124, 108, 255, 0.12), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(224, 76, 207, 0.08), transparent 60%),
+    #07070d;
+  user-select: none;
+}
+
+input {
+  user-select: text;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Focus ring for couch navigation. Mouse hover gets a lighter treatment. */
+.tv-focus {
+  outline: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+.tv-focus:focus-visible,
+.tv-focus:focus {
+  box-shadow: 0 0 0 3px #fff, 0 14px 40px -10px rgba(124, 108, 255, 0.7);
+  z-index: 1;
+}
+.card.tv-focus:focus {
+  transform: scale(1.06);
+}
+.card.tv-focus:hover {
+  transform: scale(1.03);
+}
+
+.bg-white\/12 {
+  background-color: rgb(255 255 255 / 0.12);
+}
+
+.tv-mode {
+  cursor: none;
+}
+.tv-mode:hover {
+  cursor: default;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-focus,
+  .card.tv-focus:focus {
+    transition: none;
+    transform: none;
+  }
+}

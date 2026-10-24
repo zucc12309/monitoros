@@ -1,0 +1,38 @@
+{
+  "name": "@monitoros/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@monitoros/contracts": "*",
+    "@monitoros/metadata": "*",
+    "@monitoros/player": "*",
+    "@monitoros/provider-sdk": "*",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-autostart": "2.7.0",
+    "@tauri-apps/plugin-dialog": "2.8.3",
+    "@tauri-apps/plugin-opener": "2.7.2",
+    "hls.js": "1.5.17",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zustand": "4.5.5",
+    "qrcode-generator": "1.4.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "@testing-library/react": "16.0.1",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.3",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.14",
+    "vite": "5.4.10"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "desktop-ui", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 1420 },
+    { "name": "remote-pwa", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev:remote"], "port": 1421 }
+  ]
+}

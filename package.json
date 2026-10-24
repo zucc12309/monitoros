@@ -1,0 +1,29 @@
+{
+  "name": "monitoros",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npm -w @monitoros/desktop run dev",
+    "dev:remote": "npm -w @monitoros/remote run dev",
+    "build": "npm -w @monitoros/desktop run build && npm -w @monitoros/remote run build",
+    "tauri": "npm -w @monitoros/desktop run tauri --",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -b",
+    "lint": "tsc -b && cargo clippy --workspace --all-targets -- -D warnings",
+    "test:rust": "cargo test --workspace"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.2",
+    "@types/node": "20.17.6",
+    "typescript": "5.6.3",
+    "vitest": "2.1.5",
+    "jsdom": "25.0.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

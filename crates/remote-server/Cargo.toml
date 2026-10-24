@@ -1,0 +1,20 @@
+[package]
+name = "remote-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+monitoros-core = { path = "../monitoros-core" }
+axum = { version = "0.7", features = ["ws"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+futures-util = "0.3"
+local-ip-address = "0.6"
+tower-http = { version = "0.6", features = ["fs", "limit"] }
+
+[dev-dependencies]
+tokio-tungstenite = "0.24"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }

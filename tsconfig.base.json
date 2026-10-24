@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@monitoros/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@monitoros/provider-sdk": [
+        "packages/provider-sdk/src/index.ts"
+      ],
+      "@monitoros/metadata": [
+        "packages/metadata/src/index.ts"
+      ],
+      "@monitoros/player": [
+        "packages/player/src/index.ts"
+      ]
+    }
+  }
+}
