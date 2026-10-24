@@ -59,7 +59,8 @@ export function HomePage() {
   const open = useOpenItem();
   const play = usePlayItem();
   const resume = (e: ProgressEntry) => void play(e.item);
-  const apps = settings.subscriptions.length ? SUBSCRIPTION_SERVICES.filter((s) => settings.subscriptions.includes(s.id)) : SUBSCRIPTION_SERVICES.slice(0, 7);
+  // Every app, with the ones you subscribe to first.
+  const apps = [...SUBSCRIPTION_SERVICES].sort((a, b) => Number(settings.subscriptions.includes(b.id)) - Number(settings.subscriptions.includes(a.id)));
   const inProgress = progress.filter((p) => p.durationSec > 0 && p.positionSec < p.durationSec - 60);
 
   return (

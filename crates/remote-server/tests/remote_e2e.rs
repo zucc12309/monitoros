@@ -153,3 +153,21 @@ async fn oversized_body_is_refused() {
     let r = client().post(format!("{}/api/pair/request", h.url)).header("origin", &h.url).json(&serde_json::json!({ "deviceName": "x".repeat(10_000) })).send().await.unwrap();
     assert_eq!(r.status(), 413);
 }
+
+#[tokio::test]
+async fn pwa_page_is_never_served_stale() {
+    let dir = std::env::temp_dir().join(format!("mo-pwa-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    std::fs::write(dir.join("index.html"), "<!doctype html>remote").unwrap();
+    std::fs::write(dir.join("assets/app-abc123.js"), "1").unwrap();
+    let pairing = Arc::new(Mutex::new(PairingManager::default()));
+    let (ctx, _crx) = mpsc::channel(4);
+    let (etx, _erx) = mpsc::channel(4);
+    let (_stx, srx) = watch::channel(serde_json::json!({}));
+    let h = start(ServerConfig { bind_ip: "127.0.0.1".parse().unwrap(), port: 0, static_dir: Some(dir.clone()), pairing, commands: ctx, events: etx, status: srx }).await.unwrap();
+    let page = client().get(format!("{}/", h.url())).send().await.unwrap();
+    assert_eq!(page.headers()["cache-control"], "no-cache");
+    let asset = client().get(format!("{}/assets/app-abc123.js", h.url())).send().await.unwrap();
+    assert!(asset.headers()["cache-control"].to_str().unwrap().contains("immutable"));
+    std::fs::remove_dir_all(dir).ok();
+}

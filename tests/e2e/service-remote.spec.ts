@@ -183,10 +183,19 @@ test("typing opens a collapsed search box first (Netflix-like) and Enter searche
   await expect.poll(() => log(page)).toContain("search:stranger things");
 });
 
-test("Back goes back inside the service, and from its first page returns to MonitorOS", async ({ page }) => {
+test("Back while browsing closes the app (even after moving between pages)", async ({ page }) => {
   await open(page);
   await page.route("https://monitoros.invalid/**", (r) => r.fulfill({ body: "closed" }));
-  await page.goto("https://service.test/title/42");
+  await page.goto("https://service.test/results?search_query=kalki");
+  const closed = page.waitForRequest((r) => r.url().startsWith("https://monitoros.invalid/close"));
+  await remote(page, { type: "nav", key: "back" }).catch(() => {});
+  await closed;
+});
+
+test("Back on a video page returns to browsing first, then closes the app", async ({ page }) => {
+  await open(page);
+  await page.route("https://monitoros.invalid/**", (r) => r.fulfill({ body: "closed" }));
+  await page.goto("https://service.test/watch?v=abc");
   await remote(page, { type: "nav", key: "back" }).catch(() => {}); // navigation tears down the context
   await expect(page).toHaveURL("https://service.test/");
   const closed = page.waitForRequest((r) => r.url().startsWith("https://monitoros.invalid/close"));

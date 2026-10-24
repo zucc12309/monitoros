@@ -146,8 +146,13 @@ pub async fn start(cfg: ServerConfig) -> std::io::Result<ServerHandle> {
 }
 
 async fn security_headers(req: Request<Body>, next: Next) -> Response {
+    // index.html / manifest aren't content-hashed: make iOS revalidate them so
+    // the phone never keeps running an old remote after MonitorOS updates.
+    // Vite's /assets/* files are hashed and can be cached for good.
+    let cache = if req.uri().path().starts_with("/assets/") { "public, max-age=31536000, immutable" } else { "no-cache" };
     let mut res = next.run(req).await;
     let h = res.headers_mut();
+    h.insert(header::CACHE_CONTROL, cache.parse().unwrap());
     h.insert("x-content-type-options", "nosniff".parse().unwrap());
     h.insert("x-frame-options", "DENY".parse().unwrap());
     h.insert("referrer-policy", "no-referrer".parse().unwrap());

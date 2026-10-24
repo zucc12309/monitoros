@@ -113,6 +113,11 @@ pub fn app_window_args(url: &str, profile_dir: &std::path::Path) -> Vec<String> 
 /// replaces it, so there is never more than one window for services.
 static APP_WINDOW: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
 
+/// MonitorOS's managed Chrome/Edge service window is still running.
+pub fn app_window_running() -> bool {
+    APP_WINDOW.lock().unwrap().as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)))
+}
+
 fn close_app_window() {
     if let Some(mut child) = APP_WINDOW.lock().unwrap().take() {
         let _ = child.kill();
@@ -197,6 +202,33 @@ pub fn forward(app: &AppHandle, cmd: &monitoros_core::remote::RemoteCommand) -> 
         Ok(json) => w.eval(format!("window.__monitorosRemote && window.__monitorosRemote({json})")).is_ok(),
         Err(_) => false,
     }
+}
+
+/// Logs which page the service window is on a moment later (host + path,
+/// plus whether there is a query: no query values).
+pub fn log_page_after(app: &AppHandle, delay: std::time::Duration) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        if let Some(u) = app.get_webview_window(SERVICE_WINDOW).and_then(|w| w.url().ok()) {
+            tracing::info!(host = u.host_str().unwrap_or(""), path = u.path(), has_query = u.query().is_some(), "service page");
+        }
+    });
+}
+
+/// Logs what the page script reported for the last command (field found,
+/// lengths): see `window.__monitorosLast` in service_remote.js.
+pub fn log_outcome_after(app: &AppHandle, delay: std::time::Duration) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        if let Some(w) = app.get_webview_window(SERVICE_WINDOW) {
+            let _ = w.eval_with_callback("JSON.stringify(window.__monitorosLast || null)", |out| {
+                let out: String = out.chars().filter(|c| !c.is_control()).take(300).collect();
+                tracing::info!(%out, "page outcome");
+            });
+        }
+    });
 }
 
 pub fn toggle_fullscreen(app: &AppHandle) {

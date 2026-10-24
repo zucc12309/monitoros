@@ -123,6 +123,21 @@ pub fn toggle_mode(app: &AppHandle) {
     apply_mode(app, if current == Mode::Tv { Mode::Desktop } else { Mode::Tv });
 }
 
+/// Diagnostics log (Settings › Diagnostics, spec §16). Records events and
+/// routing decisions only: never typed text, tokens or full URLs.
+fn init_logging(app: &AppHandle) {
+    let Ok(dir) = app.path().app_log_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("monitoros.log");
+    // Keep it bounded: start fresh once it passes 2 MB.
+    if std::fs::metadata(&path).map(|m| m.len() > 2 * 1024 * 1024).unwrap_or(false) {
+        let _ = std::fs::remove_file(&path);
+    }
+    if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = tracing_subscriber::fmt().with_writer(std::sync::Mutex::new(file)).with_ansi(false).with_target(false).try_init();
+    }
+}
+
 fn data_dir(app: &AppHandle) -> PathBuf {
     let dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("MonitorOS"));
     let _ = std::fs::create_dir_all(&dir);
@@ -154,6 +169,8 @@ pub fn run() {
         )
         .setup(move |app| {
             let handle = app.handle().clone();
+            init_logging(&handle);
+            tracing::info!("MonitorOS {} starting", handle.package_info().version);
             let store = Store::open(&data_dir(&handle).join("monitoros.db"))?;
             let devices: Vec<monitoros_core::pairing::PairedDevice> = store.devices().unwrap_or_default();
             let (status, _) = tokio::sync::watch::channel(serde_json::json!({ "mode": "desktop" }));

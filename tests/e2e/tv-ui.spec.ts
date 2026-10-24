@@ -28,6 +28,10 @@ test("home screen rows render and arrow keys move focus deterministically", asyn
   await expect(page.getByRole("heading", { name: "Your Apps" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Trending Movies in India" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Netflix" })).toBeVisible();
+  // All apps are on the home row, subscribed ones first (netflix, prime here).
+  const tiles = await page.locator('[data-nav-row="row-apps"][aria-label^="Open "]').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+  expect(tiles.length).toBe(10);
+  expect(tiles.slice(0, 2)).toEqual(["Open Netflix", "Open Prime Video"]);
 
   const navRow = () => page.evaluate(() => (document.activeElement as HTMLElement).dataset.navRow);
   await expect.poll(() => focusedText(page)).toContain("Watch Now"); // default focus

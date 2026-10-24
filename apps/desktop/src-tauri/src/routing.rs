@@ -49,8 +49,16 @@ pub enum Route {
     Drop,
 }
 
-pub fn route(cmd: &RemoteCommand, front: Front, other_apps_allowed: bool) -> Route {
+#[cfg(test)]
+fn route(cmd: &RemoteCommand, front: Front, other_apps_allowed: bool) -> Route {
+    route_with(cmd, front, other_apps_allowed, false)
+}
+
+/// `managed_browser` = MonitorOS's own Chrome/Edge service window is open
+/// (Chrome mode). There, Back closes it like Back closes the in-app window.
+pub fn route_with(cmd: &RemoteCommand, front: Front, other_apps_allowed: bool, managed_browser: bool) -> Route {
     match cmd {
+        RemoteCommand::Nav { key: NavKey::Back } if front == Front::OtherApp && managed_browser => Route::Native(Native::Home),
         RemoteCommand::Mode { target } => Route::Native(Native::Mode(*target)),
         RemoteCommand::Volume { action } => Route::Native(Native::Volume(*action)),
         RemoteCommand::Fullscreen => Route::Native(Native::Fullscreen),
@@ -107,6 +115,14 @@ mod tests {
         assert_eq!(route(&p, Front::MonitorOs, true), Route::System);
         assert_eq!(route(&p, Front::ServicePage, false), Route::System);
         assert_eq!(route(&p, Front::OtherApp, true), Route::System);
+    }
+
+    #[test]
+    fn back_closes_the_managed_chrome_service_window() {
+        let back = RemoteCommand::Nav { key: NavKey::Back };
+        assert_eq!(route_with(&back, Front::OtherApp, true, true), Route::Native(Native::Home));
+        assert_eq!(route_with(&back, Front::OtherApp, true, false), Route::System, "unrelated apps get a normal Esc");
+        assert_eq!(route_with(&back, Front::ServicePage, true, true), Route::Page);
     }
 
     #[test]

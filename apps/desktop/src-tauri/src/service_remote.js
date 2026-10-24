@@ -15,6 +15,9 @@
   try {
     if (!sessionStorage.getItem(ENTRY_KEY)) sessionStorage.setItem(ENTRY_KEY, stripHash(location.href));
   } catch (_) {}
+  // Player pages on the big services (YouTube /watch & /shorts, Netflix
+  // /watch/…, Prime /detail/…/watch, Hotstar …/watch, etc.).
+  const WATCH_PATH = /\/(watch|shorts|play|player)(\/|$)/i;
   const atEntry = () => {
     try {
       return stripHash(location.href) === sessionStorage.getItem(ENTRY_KEY);
@@ -253,12 +256,12 @@
       case "nav": {
         const k = cmd.key;
         if (k === "back") {
+          // TV-app behaviour: Back leaves the player first, otherwise it
+          // closes the app (so apps are never left running in the background).
           if (document.fullscreenElement) return document.exitFullscreen();
-          if (atEntry() || history.length <= 1) {
-            location.href = CLOSE_URL;
-            return;
-          }
-          return history.back();
+          if (WATCH_PATH.test(location.pathname) && !atEntry() && history.length > 1) return history.back();
+          location.href = CLOSE_URL;
+          return;
         }
         if (k === "ok") {
           if (cursorVisible()) return clickEl(document.elementFromPoint(cx, cy));
@@ -318,9 +321,15 @@
       case "text": {
         // The phone sends its whole text box: mirror it, then search on Send.
         return searchField().then((el) => {
-          if (!el) return hint("No search box on this page");
+          // Outcome for MonitorOS's diagnostics log (no typed text recorded).
+          const describe = (e) => e && [e.tagName.toLowerCase(), e.id && "#" + e.id, e.name && "[name=" + e.name + "]", e.getAttribute("data-uia") && "[uia=" + e.getAttribute("data-uia") + "]"].filter(Boolean).join("");
+          if (!el) {
+            window.__monitorosLast = { cmd: "text", field: null, active: describe(document.activeElement) };
+            return hint("No search box on this page");
+          }
           setFieldText(el, cmd.value);
           if (cmd.submit) submitField(el);
+          window.__monitorosLast = { cmd: "text", field: describe(el), valueLen: (el.value || el.textContent || "").length, sentLen: cmd.value.length, submit: !!cmd.submit };
         });
       }
     }

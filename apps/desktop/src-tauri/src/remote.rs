@@ -2,7 +2,7 @@
 //! commands are dispatched natively where possible (mode, volume, closing a
 //! service window) and forwarded to the UI for navigation.
 
-use crate::routing::{route, Front, Native, Route};
+use crate::routing::{route_with, Front, Native, Route};
 use crate::{apply_mode, services, toggle_mode, AppState};
 use monitoros_core::{
     now_ms,
@@ -38,10 +38,29 @@ fn persist_devices(state: &AppState) {
     let _ = state.store.lock().unwrap().save_devices(&pairs);
 }
 
+/// Command name for the log; payloads (typed text) are never logged.
+fn command_kind(c: &monitoros_core::remote::RemoteCommand) -> String {
+    use monitoros_core::remote::RemoteCommand as C;
+    match c {
+        C::Nav { key } => format!("nav:{key:?}"),
+        C::Media { action } => format!("media:{action:?}"),
+        C::Text { value, submit } => format!("text(len={},submit={submit})", value.chars().count()),
+        C::Seek { .. } => "seek".into(),
+        C::Volume { .. } => "volume".into(),
+        C::Pointer { click, .. } => format!("pointer(click={click})"),
+        C::Scroll { .. } => "scroll".into(),
+        C::Mode { target } => format!("mode:{target:?}"),
+        C::Fullscreen => "fullscreen".into(),
+        C::Ping => "ping".into(),
+    }
+}
+
 fn dispatch(app: &AppHandle, c: InboundCommand) {
     let state: State<AppState> = app.state();
     let front = crate::front(app, &state);
-    match route(&c.command, front, crate::other_apps_allowed(&state)) {
+    let decision = route_with(&c.command, front, crate::other_apps_allowed(&state), services::app_window_running());
+    tracing::info!(cmd = command_kind(&c.command), ?front, ?decision, "remote");
+    match decision {
         Route::Native(Native::Mode(target)) => match target {
             ModeTarget::Tv => apply_mode(app, Mode::Tv),
             ModeTarget::Desktop => apply_mode(app, Mode::Desktop),
@@ -68,6 +87,12 @@ fn dispatch(app: &AppHandle, c: InboundCommand) {
         },
         Route::Page => {
             services::forward(app, &c.command);
+            if let monitoros_core::remote::RemoteCommand::Text { submit, .. } = c.command {
+                services::log_outcome_after(app, std::time::Duration::from_millis(1200));
+                if submit {
+                    services::log_page_after(app, std::time::Duration::from_millis(2500));
+                }
+            }
         }
         Route::System => {
             let granted = crate::input::permitted();
