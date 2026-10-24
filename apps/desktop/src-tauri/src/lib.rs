@@ -50,11 +50,16 @@ pub fn merge_status(state: &AppState, patch: serde_json::Value) {
 }
 
 /// What the remote should drive right now.
-pub fn front(state: &AppState) -> routing::Front {
+/// Asks the windows themselves (focus events can be missed when a window
+/// opens straight into a full-screen Space); falls back to the last events.
+pub fn front(app: &AppHandle, state: &AppState) -> routing::Front {
     use std::sync::atomic::Ordering::SeqCst;
-    if state.service_focused.load(SeqCst) {
+    let focused = |label: &str, cached: &std::sync::atomic::AtomicBool| {
+        app.get_webview_window(label).map(|w| w.is_focused().unwrap_or_else(|_| cached.load(SeqCst))).unwrap_or(false)
+    };
+    if focused(services::SERVICE_WINDOW, &state.service_focused) {
         routing::Front::ServicePage
-    } else if state.main_focused.load(SeqCst) {
+    } else if focused("main", &state.main_focused) {
         routing::Front::MonitorOs
     } else {
         routing::Front::OtherApp
@@ -203,7 +208,7 @@ pub fn run() {
             }
             // Tell the phone what it is driving (it switches the touchpad to
             // mouse mode outside MonitorOS's own interface).
-            merge_status(&state, serde_json::json!({ "control": front(&state).as_str() }));
+            merge_status(&state, serde_json::json!({ "control": front(app, &state).as_str() }));
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,

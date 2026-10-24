@@ -31,6 +31,29 @@ export interface Settings {
   serviceOpenMode: ServiceOpenMode;
   /** Let the paired remote send keys/mouse to other apps when they're in front. */
   remoteControlsOtherApps: boolean;
+  /** Bumped when a default changes and saved settings need migrating. */
+  settingsVersion: number;
+}
+
+/**
+ * macOS: inside MonitorOS. WKWebView exposes FairPlay (verified on macOS 26),
+ * which Netflix/Prime use in Safari, and the remote drives the page directly.
+ * Windows: WebView2 has no Widevine, so use the Edge/Chrome app window.
+ */
+export function defaultServiceOpenMode(ua = typeof navigator !== "undefined" ? navigator.userAgent : ""): ServiceOpenMode {
+  return /Windows/i.test(ua) ? "app-window" : "in-app";
+}
+
+/** Upgrade settings saved by older builds. Pure, so it can be unit-tested. */
+export function migrateSettings(saved: Partial<Settings>, ua?: string): Settings {
+  const merged: Settings = { ...DEFAULT_SETTINGS, ...saved };
+  if ((saved.settingsVersion ?? 1) < 2) {
+    // v1 builds defaulted to "app-window" (a Chrome window MonitorOS can't
+    // drive with the D-pad). Nobody chose it explicitly then: re-default.
+    merged.serviceOpenMode = defaultServiceOpenMode(ua);
+    merged.settingsVersion = 2;
+  }
+  return merged;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,8 +70,9 @@ export const DEFAULT_SETTINGS: Settings = {
   hwdec: "auto-safe",
   iptvPlaylists: [],
   remoteEnabled: false,
-  serviceOpenMode: "in-app",
+  serviceOpenMode: defaultServiceOpenMode(),
   remoteControlsOtherApps: true,
+  settingsVersion: 2,
 };
 
 export interface ProgressEntry extends WatchProgress {
@@ -113,7 +137,8 @@ export const useApp = create<AppState>((set, get) => ({
       loadState<MediaItem[]>("watchlist", []),
       loadState<ProgressEntry[]>("progress", []),
     ]);
-    const merged = { ...DEFAULT_SETTINGS, ...settings };
+    const merged = migrateSettings(settings);
+    if (merged.settingsVersion !== settings.settingsVersion) void saveState("settings", merged);
     set({ settings: merged, watchlist, progress, ready: true, mode: merged.defaultMode, page: merged.onboarded ? { name: "home" } : { name: "onboarding" } });
   },
 

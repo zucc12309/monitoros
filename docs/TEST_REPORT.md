@@ -6,11 +6,11 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 
 | Suite | Command | Result |
 |---|---|---|
-| TS unit + security (Vitest) | `npm test` | **96 / 96** across 7 files |
+| TS unit + security (Vitest) | `npm test` | **100 / 100** across 8 files |
 | Rust unit + integration | `cargo test --workspace` | **61 / 61** |
 | Rust lint | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | TS typecheck | `tsc --noEmit -p apps/desktop` and root | clean |
-| E2E (Playwright, Chrome) | `npm run test:e2e` | **17 / 17** |
+| E2E (Playwright, Chrome) | `npm run test:e2e` | **18 / 18** |
 | Windows cross-check | `cargo check --target x86_64-pc-windows-msvc -p platform-windows -p media-engine -p monitoros-core` | compiles |
 | macOS release bundle | `scripts/macos/build.sh` | `MonitorOS.app` (19 MB), DMG (7 MB) |
 
@@ -62,9 +62,21 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 5. **mpv one-shot events were missed.** `duration` was emitted before callers subscribed (the test failed 4 of 5 runs). `spawn` now returns a pre-subscribed receiver (passed 6 of 6). This would have stopped native playback from saving progress.
 6. **Netflix-style hero trailers stole the D-pad.** An autoplaying browse-page trailer was mistaken for the movie being watched, so arrows only scrolled and nothing could be selected (user report). Now only a (near-)full-screen or fullscreen video counts. A regression test reproduces the original failure.
 7. **Onboarding lost keyboard focus** when the Back button appeared (flaky E2E, 1 of 3 runs). Focus is now pinned to the primary button on each step.
-8. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
+8. **Netflix opened in Chrome, so the remote "didn't work"; it wasn't full screen and opened many windows** (user report). The first build defaulted to Chrome app windows and the saved setting persisted. Fixes:
+   - one-time migration back to the in-app window on macOS
+   - a single reusable service window
+   - Chrome mode uses its own profile/instance (honours `--start-fullscreen`, never more than one window)
+   - focus is queried live for routing
+9. **D-pad on live netflix.com** (signed-out landing page, checked ad hoc in Chrome): moves across real title buttons and FAQ items. It no longer stalls on off-screen rows or jumps rows on Left/Right.
+10. **Remote port collision.** 8765 was already used by another local process. The default is now 47815, with an OS-assigned fallback.
+
+## DRM check (macOS 26.5, WKWebView in a third-party app)
+
+`requestMediaKeySystemAccess` results: `com.apple.fps` / `fps.1_0` / `fps.3_0` (FairPlay) **supported**; Widevine and PlayReady not supported. Netflix and Prime use FairPlay in Safari, hence "inside MonitorOS" is the macOS default.
 
 ## Environment notes
+
+- The Internet Archive playback E2E depends on archive.org. It failed once while the network was slow, then passed twice in 18–22 s.
 
 - Playwright's bundled Chromium has no H.264. E2E uses installed Chrome (`channel: "chrome"`).
 - The styled Tauri DMG needs Finder automation permission, so `build.sh` uses plain `hdiutil` instead.

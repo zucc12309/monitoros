@@ -77,10 +77,13 @@
   }
 
   // ---------- helpers ----------
-  function visible(el) {
+  // Rendered and interactable. `reach` widens the area beyond the viewport so
+  // the next row/tile just off-screen is a valid target (it scrolls into view).
+  function visible(el, reach = 0) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) return false;
-    if (r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) return false;
+    const mx = innerWidth * reach, my = innerHeight * reach;
+    if (r.bottom < -my || r.right < -mx || r.top > innerHeight + my || r.left > innerWidth + mx) return false;
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0" && !el.closest("[aria-hidden='true']");
   }
@@ -135,9 +138,9 @@
   }
 
   function navigate(dir) {
-    const candidates = [...document.querySelectorAll(FOCUSABLE)].filter((e) => e !== current && visible(e));
+    const candidates = [...document.querySelectorAll(FOCUSABLE)].filter((e) => e !== current && visible(e, 1.5));
     if (!candidates.length) return false;
-    if (!current || !current.isConnected || !visible(current)) {
+    if (!current || !current.isConnected || !visible(current, 0.5)) {
       // Start nearest the top-left of the content area.
       candidates.sort((a, b) => {
         const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
@@ -157,6 +160,8 @@
       const along = dir === "left" ? -dx : dir === "right" ? dx : dir === "up" ? -dy : dy;
       const across = dir === "left" || dir === "right" ? Math.abs(dy) : Math.abs(dx);
       if (along <= 4) continue;
+      // Left/right stay in the same row: the target must overlap vertically.
+      if ((dir === "left" || dir === "right") && Math.abs(dy) > Math.max(from.height, r.height) * 0.6 + 12) continue;
       const score = along + across * 2.5;
       if (score < bestScore) {
         bestScore = score;

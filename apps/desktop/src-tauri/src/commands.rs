@@ -85,7 +85,7 @@ pub fn open_service(app: AppHandle, state: State<'_, AppState>, url: String, mod
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
             let state = tauri::Manager::state::<AppState>(&app2);
-            if crate::front(&state) == crate::routing::Front::OtherApp {
+            if crate::front(&app2, &state) == crate::routing::Front::OtherApp {
                 state.input.send_actions(vec![crate::input::fullscreen_combo()]);
             }
         });

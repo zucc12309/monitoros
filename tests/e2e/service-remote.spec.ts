@@ -86,6 +86,27 @@ test("a hero trailer on the browse page doesn't steal the D-pad (Netflix home)",
   expect(await log(page)).toEqual([`open:${id}`]); // selected a title; no stray key events
 });
 
+test("Down reaches the next row even when it's just off-screen; Left/Right stay in the row", async ({ page }) => {
+  const rows = `<!doctype html><html><body style="margin:0;background:#141414">
+    ${[0, 1, 2].map((r) => `<div style="display:flex;gap:10px;padding:10px;margin-bottom:${r === 0 ? 700 : 40}px">${[0, 1, 2].map((c) => `<a href="#" id="r${r}c${c}" style="display:block;width:200px;height:120px;background:#333"></a>`).join("")}</div>`).join("")}
+    <p style="padding:10px"><button id="faq">FAQ</button></p></body></html>`;
+  await page.addInitScript(SCRIPT);
+  await page.route("https://rows.test/**", (r) => r.fulfill({ contentType: "text/html", body: rows }));
+  await page.goto("https://rows.test/");
+  await remote(page, { type: "nav", key: "down" });
+  expect(await focusedId(page)).toBe("r0c0");
+  await remote(page, { type: "nav", key: "down" }); // row 1 starts ~830px down, below a 720px viewport
+  expect(await focusedId(page)).toBe("r1c0");
+  await remote(page, { type: "nav", key: "right" });
+  expect(await focusedId(page)).toBe("r1c1");
+  await page.waitForTimeout(400); // let smooth scrolling settle
+  await remote(page, { type: "nav", key: "down" });
+  await remote(page, { type: "nav", key: "down" });
+  expect(await focusedId(page)).toBe("faq");
+  await remote(page, { type: "nav", key: "left" }); // nothing left of FAQ in its row: must not jump up
+  expect(await focusedId(page)).toBe("faq");
+});
+
 test("during playback, arrows/OK/play-pause/seek go to the player as keys", async ({ page }) => {
   await open(page);
   await page.evaluate(() => (window as any).startPlayer());

@@ -213,8 +213,8 @@ function Remote() {
 }
 
 const OPEN_MODES: { id: "app-window" | "in-app" | "browser"; label: string; hint: string }[] = [
-  { id: "in-app", label: "Inside MonitorOS (default)", hint: "Full screen inside MonitorOS with a ← MonitorOS button. Sign in once per service. Some services may refuse to play protected video here — if so, use the Chrome app window." },
-  { id: "app-window", label: "Chrome/Edge app window", hint: "Your installed Chrome/Edge/Brave, full screen without tabs or address bar. Keeps your existing sign-ins and full DRM support." },
+  { id: "in-app", label: "Inside MonitorOS (recommended on Mac)", hint: "Full screen inside MonitorOS. The remote moves between titles, opens them and controls playback. Netflix/Prime DRM (FairPlay) is available here. One window: opening another app replaces it." },
+  { id: "app-window", label: "Chrome/Edge app window", hint: "A MonitorOS-only Chrome/Edge window, full screen, no tabs or address bar. Sign in to each service once in it. Remote sends keys and mouse (needs Accessibility on Mac). One window: opening another app replaces it." },
   { id: "browser", label: "Default browser tab", hint: "Opens a normal tab in your default browser." },
 ];
 

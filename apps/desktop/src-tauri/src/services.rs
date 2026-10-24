@@ -96,29 +96,65 @@ pub fn find_chromium() -> Option<PathBuf> {
 
 /// Arguments for a Chromium app window. The URL is a single argv entry
 /// (no shell), and was validated as https before reaching here.
-pub fn app_window_args(url: &str) -> Vec<String> {
-    vec![format!("--app={url}"), "--start-fullscreen".into(), "--no-first-run".into(), "--no-default-browser-check".into()]
+pub fn app_window_args(url: &str, profile_dir: &std::path::Path) -> Vec<String> {
+    vec![
+        format!("--app={url}"),
+        // A MonitorOS-only profile runs as its own Chrome instance, so
+        // --start-fullscreen is honoured even if the user's Chrome is open,
+        // and it never adds tabs to their normal windows. (Sign in once.)
+        format!("--user-data-dir={}", profile_dir.display()),
+        "--start-fullscreen".into(),
+        "--no-first-run".into(),
+        "--no-default-browser-check".into(),
+    ]
+}
+
+/// The one Chrome/Edge instance MonitorOS manages. Opening another app
+/// replaces it, so there is never more than one window for services.
+static APP_WINDOW: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
+
+fn close_app_window() {
+    if let Some(mut child) = APP_WINDOW.lock().unwrap().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 pub fn open(app: &AppHandle, url: &str, mode: OpenMode) -> Result<&'static str, String> {
     match mode {
         OpenMode::AppWindow => match find_chromium() {
             Some(browser) => {
-                Command::new(browser)
-                    .args(app_window_args(url))
+                close(app);
+                close_app_window();
+                let profile = app.path().app_data_dir().map_err(|e| e.to_string())?.join("browser-profile");
+                let child = Command::new(browser)
+                    .args(app_window_args(url, &profile))
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
                     .stderr(Stdio::null())
                     .spawn()
                     .map_err(|e| e.to_string())?;
+                *APP_WINDOW.lock().unwrap() = Some(child);
                 Ok("app-window")
             }
             // No Chromium browser installed: fall back rather than fail.
             None => open(app, url, OpenMode::Browser).map(|_| "browser"),
         },
         OpenMode::InApp => {
-            close(app);
-            let parsed = url.parse().map_err(|_| "invalid URL".to_string())?;
+            close_app_window();
+            let parsed: url::Url = url.parse().map_err(|_| "invalid URL".to_string())?;
+            // One service window, ever. Same app → just bring it back (keeps
+            // your place); different app → navigate the same window.
+            if let Some(w) = app.get_webview_window(SERVICE_WINDOW) {
+                let same_app = w.url().ok().and_then(|u| u.host_str().map(str::to_owned)) == parsed.host_str().map(str::to_owned);
+                if !same_app {
+                    w.navigate(parsed).map_err(|e| e.to_string())?;
+                }
+                let _ = w.show();
+                let _ = w.set_fullscreen(true);
+                let _ = w.set_focus();
+                return Ok("in-app");
+            }
             let handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(app, SERVICE_WINDOW, WebviewUrl::External(parsed))
                 .title("MonitorOS")
@@ -176,6 +212,7 @@ pub fn is_close_url(u: &url::Url) -> bool {
 
 /// Closes the in-app service window (remote Home/Back, or Ctrl/Cmd+Shift+M).
 pub fn close(app: &AppHandle) -> bool {
+    close_app_window();
     if let Some(w) = app.get_webview_window(SERVICE_WINDOW) {
         let _ = w.close();
         if let Some(main) = app.get_webview_window("main") {
@@ -193,9 +230,10 @@ mod tests {
 
     #[test]
     fn app_window_args_keep_url_as_one_argument() {
-        let a = app_window_args("https://www.netflix.com/browse");
+        let a = app_window_args("https://www.netflix.com/browse", std::path::Path::new("/tmp/mo-profile"));
         assert_eq!(a[0], "--app=https://www.netflix.com/browse");
         assert!(a.contains(&"--start-fullscreen".to_string()));
+        assert!(a.contains(&"--user-data-dir=/tmp/mo-profile".to_string()), "separate instance so full screen applies");
     }
 
     #[test]

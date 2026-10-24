@@ -40,7 +40,7 @@ fn persist_devices(state: &AppState) {
 
 fn dispatch(app: &AppHandle, c: InboundCommand) {
     let state: State<AppState> = app.state();
-    let front = crate::front(&state);
+    let front = crate::front(app, &state);
     match route(&c.command, front, crate::other_apps_allowed(&state)) {
         Route::Native(Native::Mode(target)) => match target {
             ModeTarget::Tv => apply_mode(app, Mode::Tv),
