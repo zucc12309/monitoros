@@ -1,5 +1,6 @@
 import type { NavKey, RemoteCommand, RemoteStatus } from "@monitoros/contracts";
 import { RemoteConnection, completePairing, getToken, requestPairing, setToken, type ConnState } from "./connection";
+import { controllerActive, join as rejoinGame, renderController, showPlayers, suspend as suspendController } from "./controller";
 import "./style.css";
 
 const app = document.getElementById("app")!;
@@ -107,6 +108,7 @@ function renderRemote() {
       <span id="dot" class="dot"></span><span id="state">Connecting…</span>
       <button id="fs" class="pill" aria-label="Full screen">⛶ Full screen</button>
       <button id="mode" class="pill">TV ⇄ Desktop</button>
+      <button id="game" class="pill">🎮 Controller</button>
     </header>
     <div id="now" class="now hidden"></div>
     <div id="pad" class="pad" aria-label="Touchpad">
@@ -159,6 +161,7 @@ function renderRemote() {
   $("#mute").onclick = () => send({ type: "volume", action: "mute" });
   $("#mode").onclick = () => send({ type: "mode", target: "toggle" });
   $("#fs").onclick = () => send({ type: "fullscreen" });
+  $("#game").onclick = openController;
   $("#unpair").onclick = () => {
     conn?.close();
     setToken(null);
@@ -269,7 +272,22 @@ function bindTouchpad(pad: HTMLElement) {
   });
 }
 
+function openController() {
+  renderController(app, {
+    send: (cmd) => conn?.send(cmd) ?? false,
+    deviceId: () => conn?.deviceId ?? null,
+    exit: () => {
+      renderRemote();
+      setState(conn?.state ?? "connecting");
+    },
+  });
+  if (lastStatus) setStatus(lastStatus);
+}
+
 function setState(s: ConnState) {
+  if (conn) conn.state = s;
+  // Back online in controller mode: take the same player slot again.
+  if (s === "online" && controllerActive()) rejoinGame();
   const dot = document.getElementById("dot");
   const label = document.getElementById("state");
   if (!dot || !label) return;
@@ -281,7 +299,11 @@ function setState(s: ConnState) {
   }
 }
 
+let lastStatus: RemoteStatus | null = null;
+
 function setStatus(st: RemoteStatus) {
+  lastStatus = st;
+  if (controllerActive()) return showPlayers(st.game?.players, st.game?.error ?? undefined);
   if (st.control) control = st.control;
   const now = document.getElementById("now");
   const mode = document.getElementById("mode");
@@ -325,6 +347,8 @@ function start() {
 }
 
 document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") suspendController();
+  if (document.visibilityState === "visible" && controllerActive()) return; // the socket reconnects and rejoins
   // iOS suspends sockets in the background; reconnect promptly on return.
   if (document.visibilityState === "visible" && getToken()) start();
 });

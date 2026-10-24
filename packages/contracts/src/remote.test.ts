@@ -37,6 +37,15 @@ describe("remote command validation", () => {
     expect(validateCommand({ type: "volume", action: "up", shell: "x" })).toEqual({ type: "volume", action: "up" });
   });
 
+  it("validates game controller commands", () => {
+    expect(validateCommand({ type: "game", action: "join" })).toEqual({ type: "game", action: "join" });
+    expect(validateCommand({ type: "pad", buttons: 17, lx: -0.5, ly: 1, player: 3 })).toEqual({ type: "pad", buttons: 17, lx: -0.5, ly: 1 });
+    expect(validateCommand({ type: "pad", buttons: 0 })).toEqual({ type: "pad", buttons: 0, lx: 0, ly: 0 });
+    expect(() => validateCommand({ type: "pad", buttons: 1 << 18 })).toThrow();
+    expect(() => validateCommand({ type: "pad", buttons: 1, lx: 2 })).toThrow();
+    expect(() => validateCommand({ type: "game", action: "kick" })).toThrow();
+  });
+
   it("validates envelopes", () => {
     expect(validateEnvelope({ seq: 1, sentAt: 1, command: { type: "ping" } }).seq).toBe(1);
     expect(() => validateEnvelope({ seq: -1, sentAt: 1, command: { type: "ping" } })).toThrow();

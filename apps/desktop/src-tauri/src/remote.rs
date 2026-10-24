@@ -51,6 +51,8 @@ fn command_kind(c: &monitoros_core::remote::RemoteCommand) -> String {
         C::Scroll { .. } => "scroll".into(),
         C::Mode { target } => format!("mode:{target:?}"),
         C::Fullscreen => "fullscreen".into(),
+        C::Game { action } => format!("game:{action:?}"),
+        C::Pad { .. } => "pad".into(),
         C::Ping => "ping".into(),
     }
 }
@@ -148,14 +150,22 @@ pub async fn remote_start(app: AppHandle, state: State<'_, AppState>) -> Result<
         let a = app.clone();
         tokio::spawn(async move {
             while let Some(c) = crx.recv().await {
-                dispatch(&a, c);
+                // Controller input goes to the game whatever is in front.
+                if crate::game::is_game_command(&c.command) {
+                    crate::game::handle(&a, &c.device_id, c.command).await;
+                } else {
+                    dispatch(&a, c);
+                }
             }
         });
         let a = app.clone();
         tokio::spawn(async move {
             while let Some(ev) = erx.recv().await {
-                if matches!(ev, ServerEvent::DevicePaired { .. }) {
-                    persist_devices(&a.state::<AppState>());
+                match &ev {
+                    ServerEvent::DevicePaired { .. } => persist_devices(&a.state::<AppState>()),
+                    ServerEvent::DeviceConnected { device_id, .. } => crate::game::device_connected(&a.state::<AppState>(), device_id),
+                    ServerEvent::DeviceDisconnected { device_id } => crate::game::device_disconnected(&a.state::<AppState>(), device_id),
+                    _ => {}
                 }
                 let _ = a.emit("remote://event", &ev);
             }
@@ -205,4 +215,5 @@ pub fn devices_list(state: State<'_, AppState>) -> Vec<serde_json::Value> {
 pub fn device_revoke(state: State<'_, AppState>, id: String) {
     state.pairing.lock().unwrap().revoke(&id);
     persist_devices(&state);
+    crate::game::device_revoked(&state, &id);
 }

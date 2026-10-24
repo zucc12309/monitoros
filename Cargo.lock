@@ -2493,6 +2493,8 @@ name = "monitoros-desktop"
 version = "0.1.0"
 dependencies = [
  "enigo",
+ "gamepad-bridge",
+ "gaming-core",
  "media-engine",
  "monitoros-core",
  "platform-macos",

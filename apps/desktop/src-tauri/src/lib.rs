@@ -2,6 +2,7 @@
 //! adapter and the LAN remote server.
 
 mod commands;
+mod game;
 mod input;
 mod remote;
 mod routing;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub main_focused: std::sync::atomic::AtomicBool,
     pub service_focused: std::sync::atomic::AtomicBool,
     pub input: input::SystemInput,
+    pub games: game::Games,
 }
 
 /// Shallow-merge `patch` into the status object pushed to paired remotes.
@@ -186,6 +188,7 @@ pub fn run() {
                 main_focused: std::sync::atomic::AtomicBool::new(true),
                 service_focused: std::sync::atomic::AtomicBool::new(false),
                 input: input::SystemInput::default(),
+                games: game::Games::default(),
             });
 
             let gs = app.global_shortcut();
@@ -260,6 +263,11 @@ pub fn run() {
             remote::pairing_deny,
             remote::devices_list,
             remote::device_revoke,
+            game::game_info,
+            game::game_set_file,
+            game::game_launch,
+            game::game_stop,
+            game::game_remove_player,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MonitorOS");

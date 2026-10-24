@@ -59,6 +59,9 @@ export class RemoteConnection {
   private closedByUser = false;
   private pending = new Map<number, number>(); // seq -> sentAt (for latency)
   latencyMs: number | null = null;
+  state: ConnState = "connecting";
+  /** This phone's paired device ID (from the server's auth reply). */
+  deviceId: string | null = null;
 
   constructor(
     private token: string,
@@ -76,7 +79,7 @@ export class RemoteConnection {
     this.seq = 0;
     ws.onopen = () => ws.send(JSON.stringify({ auth: this.token }));
     ws.onmessage = (e) => {
-      let msg: { type?: string; ok?: boolean; seq?: number; status?: RemoteStatus };
+      let msg: { type?: string; ok?: boolean; seq?: number; status?: RemoteStatus; deviceId?: string };
       try {
         msg = JSON.parse(String(e.data));
       } catch {
@@ -85,6 +88,7 @@ export class RemoteConnection {
       if (msg.type === "auth") {
         if (msg.ok) {
           this.retry = 0;
+          if (typeof msg.deviceId === "string") this.deviceId = msg.deviceId;
           this.onState("online");
         } else {
           this.closedByUser = true;

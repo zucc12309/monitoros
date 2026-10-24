@@ -186,3 +186,18 @@ export const pairingDeny = (requestId: string) => invoke<void>("pairing_deny", {
 export const devicesList = () => (isTauri ? invoke<PairedDevice[]>("devices_list") : Promise.resolve([]));
 export const deviceRevoke = (id: string) => invoke<void>("device_revoke", { id });
 export const pushRemoteStatus = (status: unknown) => (isTauri ? invoke<void>("remote_status", { status }) : Promise.resolve());
+
+// ---------- games ----------
+export interface GamePlayerInfo { player: number; status: "empty" | "connected" | "reserved"; deviceId?: string; deviceName?: string }
+export interface GameInfo { dolphinVersion: string | null; dolphinError: string | null; gameFile: string | null; running: boolean; players: GamePlayerInfo[]; error: string | null }
+export const gameInfo = () => (isTauri ? invoke<GameInfo>("game_info") : Promise.resolve<GameInfo>({ dolphinVersion: null, dolphinError: "Games need the MonitorOS app", gameFile: null, running: false, players: [0, 1, 2, 3].map((player) => ({ player, status: "empty" })), error: null }));
+export async function pickGameFile(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = await open({ multiple: false, title: "Choose a Wii or GameCube game", filters: [{ name: "Wii / GameCube games", extensions: ["rvz", "iso", "wbfs", "gcz", "wia", "ciso", "gcm"] }] });
+  return typeof res === "string" ? res : null;
+}
+export const gameSetFile = (path: string) => invoke<void>("game_set_file", { path });
+export const gameLaunch = () => invoke<void>("game_launch");
+export const gameStop = () => invoke<void>("game_stop");
+export const gameRemovePlayer = (player: number) => invoke<void>("game_remove_player", { player });

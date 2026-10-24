@@ -5,6 +5,8 @@
 //! slot. On disconnect the slot is held for a grace period so a phone that
 //! drops off Wi-Fi gets the same player back; its input is released at once.
 
+pub mod dolphin;
+
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
@@ -25,6 +27,7 @@ pub enum SlotStatus {
 pub struct SlotView {
     pub player: usize,
     pub status: SlotStatus,
+    pub device_id: Option<String>,
     pub device_name: Option<String>,
 }
 
@@ -148,6 +151,7 @@ impl Slots {
                     Some(s) if s.connected => SlotStatus::Connected,
                     Some(_) => SlotStatus::Reserved,
                 },
+                device_id: s.as_ref().map(|s| s.device_id.clone()),
                 device_name: s.as_ref().map(|s| s.device_name.clone()),
             })
             .collect()

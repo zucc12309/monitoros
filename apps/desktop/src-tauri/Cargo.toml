@@ -31,6 +31,8 @@ provider-runtime = { path = "../../../crates/provider-runtime" }
 storage = { path = "../../../crates/storage" }
 media-engine = { path = "../../../crates/media-engine" }
 remote-server = { path = "../../../crates/remote-server" }
+gamepad-bridge = { path = "../../../crates/gamepad-bridge" }
+gaming-core = { path = "../../../crates/gaming-core" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 platform-macos = { path = "../../../crates/platform-macos" }

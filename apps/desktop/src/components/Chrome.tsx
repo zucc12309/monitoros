@@ -10,6 +10,7 @@ const NAV: { label: string; page: Page }[] = [
   { label: "Apps", page: { name: "apps" } },
   { label: "Free", page: { name: "free" } },
   { label: "Library", page: { name: "library" } },
+  { label: "Games", page: { name: "games" } },
 ];
 
 function samePage(a: Page, b: Page) {

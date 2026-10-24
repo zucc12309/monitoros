@@ -9,6 +9,7 @@ export type Page =
   | { name: "apps" }
   | { name: "free" }
   | { name: "library" }
+  | { name: "games" }
   | { name: "search"; query?: string }
   | { name: "detail"; item: MediaItem }
   | { name: "settings"; section?: string }

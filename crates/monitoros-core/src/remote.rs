@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 pub const MAX_TEXT_LEN: usize = 256;
 pub const MAX_SEEK_SEC: f64 = 3600.0;
 pub const MAX_POINTER_DELTA: f64 = 500.0;
+/// Controller buttons are a bit set of 18 buttons (DualShock layout, see
+/// crates/gamepad-bridge `proto::button`).
+pub const PAD_BUTTON_MASK: u32 = (1 << 18) - 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -48,6 +51,15 @@ pub enum ModeTarget {
     Toggle,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GameAction {
+    /// Take a player slot (or get the same one back after a reconnect).
+    Join,
+    /// Give the slot up.
+    Leave,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum RemoteCommand {
@@ -76,6 +88,18 @@ pub enum RemoteCommand {
     Mode { target: ModeTarget },
     /// Toggle full screen on whatever app is in front.
     Fullscreen,
+    /// Join or leave local multiplayer as a game controller.
+    Game { action: GameAction },
+    /// Complete controller state (never a delta, so nothing can stick down).
+    /// The player slot comes from the authenticated device, not the message.
+    Pad {
+        buttons: u32,
+        /// Left stick, -1..=1, +y = up.
+        #[serde(default)]
+        lx: f64,
+        #[serde(default)]
+        ly: f64,
+    },
     Ping,
 }
 
@@ -123,6 +147,11 @@ impl RemoteCommand {
             }
             RemoteCommand::Scroll { dx, dy }
                 if !dx.is_finite() || !dy.is_finite() || dx.abs() > MAX_POINTER_DELTA || dy.abs() > MAX_POINTER_DELTA =>
+            {
+                Err(CommandError::OutOfRange)
+            }
+            RemoteCommand::Pad { buttons, lx, ly }
+                if buttons & !PAD_BUTTON_MASK != 0 || !lx.is_finite() || !ly.is_finite() || lx.abs() > 1.0 || ly.abs() > 1.0 =>
             {
                 Err(CommandError::OutOfRange)
             }
@@ -235,6 +264,26 @@ mod tests {
     fn fullscreen_parses() {
         let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"fullscreen"}}"#).unwrap();
         assert_eq!(e.command, RemoteCommand::Fullscreen);
+    }
+
+    #[test]
+    fn game_and_pad_commands() {
+        let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"game","action":"join"}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Game { action: GameAction::Join });
+        let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"pad","buttons":17,"lx":-0.5,"ly":1}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Pad { buttons: 17, lx: -0.5, ly: 1.0 });
+        let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"pad","buttons":0}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Pad { buttons: 0, lx: 0.0, ly: 0.0 });
+        for bad in [
+            r#"{"type":"pad","buttons":262144}"#,
+            r#"{"type":"pad","buttons":1,"lx":1.5}"#,
+            r#"{"type":"pad","buttons":-1}"#,
+        ] {
+            assert!(parse_envelope(&format!(r#"{{"seq":1,"sentAt":1,"command":{bad}}}"#)).is_err(), "{bad}");
+        }
+        // A phone cannot pick someone else's player slot.
+        assert!(parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"pad","buttons":1,"player":2}}"#).is_err());
+        assert!(parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"game","action":"kick"}}"#).is_err());
     }
 
     #[test]
