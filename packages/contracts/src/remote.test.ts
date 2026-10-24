@@ -6,6 +6,7 @@ describe("remote command validation", () => {
     expect(validateCommand({ type: "nav", key: "up" })).toEqual({ type: "nav", key: "up" });
     expect(validateCommand({ type: "seek", deltaSec: -10 })).toEqual({ type: "seek", deltaSec: -10 });
     expect(validateCommand({ type: "mode", target: "toggle" })).toEqual({ type: "mode", target: "toggle" });
+    expect(validateCommand({ type: "fullscreen", extra: 1 })).toEqual({ type: "fullscreen" });
   });
 
   it("accepts scroll and range-checks it", () => {

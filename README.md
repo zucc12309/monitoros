@@ -38,7 +38,7 @@ Unsigned builds open after right-click › Open.
 | Watch Netflix, Prime, JioHotstar… | Pick the app. It opens full screen inside MonitorOS; use **← MonitorOS** at top-left to come back. If a service won't play protected video there, switch Settings › Playback to **Chrome/Edge app window** |
 | Watch free films | **Free**: public-domain films play in MonitorOS's own player |
 | Play your files | **Library** › Add folder (MKV/HEVC/subtitles via mpv) |
-| Use your iPhone | Settings › iPhone Remote › Start, scan the QR code, approve on the TV, type the code. Inside Netflix & co. the D-pad moves between titles and Back steps back. The touchpad becomes the computer's mouse (1 finger moves, tap clicks, 2 fingers scroll; macOS asks once for Accessibility). **Home** returns to MonitorOS |
+| Use your iPhone | Settings › iPhone Remote › Start, scan the QR code, approve on the TV, type the code. Inside Netflix & co. the D-pad moves between titles and Back steps back. The touchpad becomes the computer's mouse (1 finger moves, tap clicks, 2 fingers scroll; macOS asks once for Accessibility). **Home** returns to MonitorOS. The remote also works in any other app in front (keys + mouse), and **⛶ Full screen** fills the screen with whatever app is showing |
 
 ### What plays inside MonitorOS's own player
 

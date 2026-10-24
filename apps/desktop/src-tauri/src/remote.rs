@@ -2,15 +2,15 @@
 //! commands are dispatched natively where possible (mode, volume, closing a
 //! service window) and forwarded to the UI for navigation.
 
+use crate::routing::{route, Front, Native, Route};
 use crate::{apply_mode, services, toggle_mode, AppState};
 use monitoros_core::{
     now_ms,
-    remote::{ModeTarget, NavKey, RemoteCommand, VolumeAction},
+    remote::{ModeTarget, VolumeAction},
     Mode,
 };
 use remote_server::{InboundCommand, ServerConfig, ServerEvent};
 use serde::Serialize;
-use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub const REMOTE_PORT: u16 = 47815;
@@ -40,13 +40,14 @@ fn persist_devices(state: &AppState) {
 
 fn dispatch(app: &AppHandle, c: InboundCommand) {
     let state: State<AppState> = app.state();
-    match &c.command {
-        RemoteCommand::Mode { target } => match target {
+    let front = crate::front(&state);
+    match route(&c.command, front, crate::other_apps_allowed(&state)) {
+        Route::Native(Native::Mode(target)) => match target {
             ModeTarget::Tv => apply_mode(app, Mode::Tv),
             ModeTarget::Desktop => apply_mode(app, Mode::Desktop),
             ModeTarget::Toggle => toggle_mode(app),
         },
-        RemoteCommand::Volume { action } => {
+        Route::Native(Native::Volume(action)) => {
             let p = &state.platform;
             let _ = match action {
                 VolumeAction::Mute => p.is_muted().and_then(|m| p.set_muted(!m)),
@@ -54,36 +55,35 @@ fn dispatch(app: &AppHandle, c: InboundCommand) {
                 VolumeAction::Down => p.volume().and_then(|v| p.set_volume(v.saturating_sub(5))),
             };
         }
-        // Home always returns to MonitorOS.
-        RemoteCommand::Nav { key: NavKey::Home } if services::is_open(app) || state.external_service.load(Ordering::SeqCst) => {
+        Route::Native(Native::Home) => {
             services::close(app);
-            state.external_service.store(false, Ordering::SeqCst);
-            crate::focus_main(app);
+            apply_mode(app, Mode::Tv);
         }
-        // Touchpad = the real system mouse (trusted clicks work on every site
-        // and in MonitorOS itself). Without macOS Accessibility permission,
-        // fall back to the in-page cursor and tell the phone why.
-        RemoteCommand::Pointer { .. } | RemoteCommand::Scroll { .. } => {
+        Route::Native(Native::Fullscreen) => match front {
+            Front::MonitorOs => toggle_mode(app),
+            Front::ServicePage => services::toggle_fullscreen(app),
+            Front::OtherApp => {
+                state.input.send(&c.command);
+            }
+        },
+        Route::Page => {
+            services::forward(app, &c.command);
+        }
+        Route::System => {
             let granted = crate::input::permitted();
             crate::merge_status(&state, serde_json::json!({ "mouse": if granted { "system" } else { "needs-permission" } }));
             if !(granted && state.input.send(&c.command)) {
                 state.input.request_permission_once();
-                services::forward(app, &c.command);
+                // Without OS input, the in-app page can still use its own cursor.
+                if front == Front::ServicePage {
+                    services::forward(app, &c.command);
+                }
             }
         }
-        // A service is open inside MonitorOS: drive that page.
-        cmd if services::is_open(app) => {
-            services::forward(app, cmd);
-        }
-        // A service is open in Chrome/Edge/browser: send real key/mouse input.
-        cmd if state.external_service.load(Ordering::SeqCst) => {
-            if !state.input.send(cmd) {
-                let _ = app.emit("remote://command", cmd);
-            }
-        }
-        _ => {
+        Route::Ui => {
             let _ = app.emit("remote://command", &c.command);
         }
+        Route::Drop => {}
     }
 }
 

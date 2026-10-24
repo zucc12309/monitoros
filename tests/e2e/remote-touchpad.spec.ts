@@ -119,3 +119,20 @@ test("tells the user how to allow mouse control when macOS permission is missing
   await openRemote(page, { mode: "tv", service: { open: true }, mouse: "needs-permission" });
   await expect(page.getByText(/Privacy & Security › Accessibility/)).toBeVisible();
 });
+
+test("any other app in front → touchpad is the mouse and the phone says what it controls", async ({ page }) => {
+  await openRemote(page, { mode: "desktop", control: "system" });
+  await expect(page.getByRole("button", { name: "Mouse ✓" })).toBeVisible();
+  await expect(page.getByText("Controlling the app in front · Home returns to MonitorOS")).toBeVisible();
+});
+
+test("MonitorOS in front → swipe mode", async ({ page }) => {
+  await openRemote(page, { mode: "tv", control: "monitoros", service: { open: false } });
+  await expect(page.getByRole("button", { name: "Swipe ✓" })).toBeVisible();
+});
+
+test("Full screen button sends the fullscreen command", async ({ page }) => {
+  await openRemote(page);
+  await page.getByRole("button", { name: "Full screen" }).click();
+  expect((await sent(page)).at(-1)).toEqual({ type: "fullscreen" });
+});

@@ -50,8 +50,10 @@ button.primary {
   border: none;
   font-weight: 600;
 }
-button.pill {
+header .pill:first-of-type {
   margin-left: auto;
+}
+button.pill {
   padding: 8px 14px;
   border-radius: 999px;
   font-size: 14px;

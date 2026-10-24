@@ -4,6 +4,7 @@
 mod commands;
 mod input;
 mod remote;
+mod routing;
 mod services;
 
 use media_engine::MpvSession;
@@ -31,8 +32,9 @@ pub struct AppState {
     pub remote: tokio::sync::Mutex<Option<remote_server::ServerHandle>>,
     pub status: tokio::sync::watch::Sender<serde_json::Value>,
     pub mode: Mutex<Mode>,
-    /// True while a service MonitorOS opened in Chrome/a browser is in front.
-    pub external_service: std::sync::atomic::AtomicBool,
+    /// Focus of MonitorOS's own windows; neither focused = another app is in front.
+    pub main_focused: std::sync::atomic::AtomicBool,
+    pub service_focused: std::sync::atomic::AtomicBool,
     pub input: input::SystemInput,
 }
 
@@ -45,6 +47,29 @@ pub fn merge_status(state: &AppState, patch: serde_json::Value) {
             }
         }
     });
+}
+
+/// What the remote should drive right now.
+pub fn front(state: &AppState) -> routing::Front {
+    use std::sync::atomic::Ordering::SeqCst;
+    if state.service_focused.load(SeqCst) {
+        routing::Front::ServicePage
+    } else if state.main_focused.load(SeqCst) {
+        routing::Front::MonitorOs
+    } else {
+        routing::Front::OtherApp
+    }
+}
+
+/// Settings › iPhone Remote › "Remote controls other apps" (default on).
+pub fn other_apps_allowed(state: &AppState) -> bool {
+    state
+        .store
+        .lock()
+        .ok()
+        .and_then(|s| s.get_setting::<serde_json::Value>("settings").ok().flatten())
+        .and_then(|v| v.get("remoteControlsOtherApps").and_then(|b| b.as_bool()))
+        .unwrap_or(true)
 }
 
 pub fn focus_main(app: &AppHandle) {
@@ -136,7 +161,8 @@ pub fn run() {
                 remote: tokio::sync::Mutex::new(None),
                 status,
                 mode: Mutex::new(Mode::Desktop),
-                external_service: std::sync::atomic::AtomicBool::new(false),
+                main_focused: std::sync::atomic::AtomicBool::new(true),
+                service_focused: std::sync::atomic::AtomicBool::new(false),
                 input: input::SystemInput::default(),
             });
 
@@ -163,19 +189,21 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            use std::sync::atomic::Ordering::SeqCst;
             let app = window.app_handle();
             let Some(state) = app.try_state::<AppState>() else { return };
             match (window.label(), event) {
-                // MonitorOS is in front again: stop driving the system input.
-                ("main", tauri::WindowEvent::Focused(true)) if !services::is_open(app) => {
-                    state.external_service.store(false, std::sync::atomic::Ordering::SeqCst);
-                    merge_status(&state, serde_json::json!({ "service": { "open": false } }));
-                }
+                ("main", tauri::WindowEvent::Focused(f)) => state.main_focused.store(*f, SeqCst),
+                (services::SERVICE_WINDOW, tauri::WindowEvent::Focused(f)) => state.service_focused.store(*f, SeqCst),
                 (services::SERVICE_WINDOW, tauri::WindowEvent::Destroyed) => {
+                    state.service_focused.store(false, SeqCst);
                     merge_status(&state, serde_json::json!({ "service": { "open": false } }));
                 }
-                _ => {}
+                _ => return,
             }
+            // Tell the phone what it is driving (it switches the touchpad to
+            // mouse mode outside MonitorOS's own interface).
+            merge_status(&state, serde_json::json!({ "control": front(&state).as_str() }));
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,

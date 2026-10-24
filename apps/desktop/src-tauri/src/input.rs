@@ -45,6 +45,8 @@ pub enum Action {
     /// Wheel ticks: (horizontal, vertical); positive = right/down.
     Scroll(i32, i32),
     Text(String),
+    /// Hold modifiers, tap a key, release (e.g. Ctrl+Cmd+F).
+    Combo(Vec<KeyName>, KeyName),
 }
 
 /// Mirror of the enigo keys we use, so the mapping is testable without enigo.
@@ -57,6 +59,10 @@ pub enum KeyName {
     Enter,
     Escape,
     Space,
+    Control,
+    Meta,
+    F,
+    F11,
 }
 
 impl From<KeyName> for Key {
@@ -69,7 +75,22 @@ impl From<KeyName> for Key {
             KeyName::Enter => Key::Return,
             KeyName::Escape => Key::Escape,
             KeyName::Space => Key::Space,
+            KeyName::Control => Key::Control,
+            KeyName::Meta => Key::Meta,
+            KeyName::F => Key::Unicode('f'),
+            KeyName::F11 => Key::F11,
         }
+    }
+}
+
+/// The OS "toggle full screen" shortcut for the frontmost app:
+/// Control+Command+F on macOS (the standard View › Enter Full Screen),
+/// F11 on Windows (browsers, Explorer, most media apps).
+pub fn fullscreen_combo() -> Action {
+    if cfg!(target_os = "macos") {
+        Action::Combo(vec![KeyName::Control, KeyName::Meta], KeyName::F)
+    } else {
+        Action::Combo(vec![], KeyName::F11)
     }
 }
 
@@ -115,6 +136,7 @@ pub fn plan(cmd: &RemoteCommand) -> Vec<Action> {
             }
         }
         RemoteCommand::Text { value } if !value.is_empty() => vec![Text(value.clone())],
+        RemoteCommand::Fullscreen => vec![fullscreen_combo()],
         _ => vec![],
     }
 }
@@ -136,6 +158,16 @@ fn run(enigo: &mut Enigo, actions: Vec<Action>) -> Result<(), String> {
                 }
             }
             Action::Text(t) => enigo.text(&t),
+            Action::Combo(mods, key) => {
+                for m in &mods {
+                    enigo.key((*m).into(), Direction::Press).map_err(|e| e.to_string())?;
+                }
+                let r = enigo.key(key.into(), Direction::Click);
+                for m in mods.iter().rev() {
+                    let _ = enigo.key((*m).into(), Direction::Release);
+                }
+                r
+            }
         }
         .map_err(|e| e.to_string())?;
     }
@@ -197,7 +229,10 @@ impl SystemInput {
 
     /// Returns false when the command has no system-input meaning.
     pub fn send(&self, cmd: &RemoteCommand) -> bool {
-        let actions = plan(cmd);
+        self.send_actions(plan(cmd))
+    }
+
+    pub fn send_actions(&self, actions: Vec<Action>) -> bool {
         if actions.is_empty() {
             return false;
         }
@@ -224,6 +259,10 @@ mod tests {
         assert_eq!(plan(&RemoteCommand::Nav { key: NavKey::Back }), vec![Action::Tap(KeyName::Escape)]);
         assert_eq!(plan(&RemoteCommand::Media { action: MediaAction::PlayPause }), vec![Action::Tap(KeyName::Space)]);
         assert!(plan(&RemoteCommand::Nav { key: NavKey::Home }).is_empty(), "home is handled natively");
+        assert_eq!(plan(&RemoteCommand::Fullscreen), vec![fullscreen_combo()]);
+        if cfg!(target_os = "macos") {
+            assert_eq!(fullscreen_combo(), Action::Combo(vec![KeyName::Control, KeyName::Meta], KeyName::F));
+        }
     }
 
     #[test]

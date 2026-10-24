@@ -166,6 +166,7 @@ function DisplayAudio() {
 function Remote() {
   const toast = useApp((s) => s.toast);
   const updateSettings = useApp((s) => s.updateSettings);
+  const controlsOtherApps = useApp((s) => s.settings.remoteControlsOtherApps);
   const [info, setInfo] = useState<RemoteInfo | null>(null);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const refresh = () => {
@@ -190,6 +191,15 @@ function Remote() {
       ) : (
         <Btn row="remote-ctl" primary onClick={() => void remoteStart().then(() => { updateSettings({ remoteEnabled: true }); refresh(); }).catch((e) => toast(String(e), "error"))}>Start remote server</Btn>
       )}
+      <div className="mt-8">
+        <Toggle
+          row="remote-other-apps"
+          label="Remote controls other apps"
+          value={controlsOtherApps}
+          onChange={(v) => updateSettings({ remoteControlsOtherApps: v })}
+          hint="When another app is in front (Chrome, Apple TV, VLC…), the D-pad, OK, Back and play/pause become real key presses and the touchpad moves the mouse. Home always returns to MonitorOS. macOS asks once for Accessibility permission."
+        />
+      </div>
       <h3 className="mb-3 mt-8 text-xl font-semibold">Paired devices</h3>
       {devices.map((d) => (
         <div key={d.id} className="mb-2 flex items-center justify-between rounded-xl bg-ink-800 px-5 py-3">

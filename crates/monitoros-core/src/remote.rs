@@ -68,6 +68,8 @@ pub enum RemoteCommand {
     /// Two-finger touchpad scroll, in phone pixels (natural direction).
     Scroll { dx: f64, dy: f64 },
     Mode { target: ModeTarget },
+    /// Toggle full screen on whatever app is in front.
+    Fullscreen,
     Ping,
 }
 
@@ -221,6 +223,12 @@ mod tests {
         let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"scroll","dx":0,"dy":-40}}"#).unwrap();
         assert_eq!(e.command, RemoteCommand::Scroll { dx: 0.0, dy: -40.0 });
         assert_eq!(parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"scroll","dx":0,"dy":1e9}}"#), Err(CommandError::OutOfRange));
+    }
+
+    #[test]
+    fn fullscreen_parses() {
+        let e = parse_envelope(r#"{"seq":1,"sentAt":1,"command":{"type":"fullscreen"}}"#).unwrap();
+        assert_eq!(e.command, RemoteCommand::Fullscreen);
     }
 
     #[test]

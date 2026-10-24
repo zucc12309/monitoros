@@ -163,8 +163,11 @@ pub fn forward(app: &AppHandle, cmd: &monitoros_core::remote::RemoteCommand) -> 
     }
 }
 
-pub fn is_open(app: &AppHandle) -> bool {
-    app.get_webview_window(SERVICE_WINDOW).is_some()
+pub fn toggle_fullscreen(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(SERVICE_WINDOW) {
+        let on = w.is_fullscreen().unwrap_or(true);
+        let _ = w.set_fullscreen(!on);
+    }
 }
 
 pub fn is_close_url(u: &url::Url) -> bool {

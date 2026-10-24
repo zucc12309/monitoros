@@ -7,10 +7,10 @@ Machine: MacBook Air (Apple Silicon, arm64), macOS 26.5, Node 20.20, Rust 1.99.1
 | Suite | Command | Result |
 |---|---|---|
 | TS unit + security (Vitest) | `npm test` | **96 / 96** across 7 files |
-| Rust unit + integration | `cargo test --workspace` | **56 / 56** |
+| Rust unit + integration | `cargo test --workspace` | **61 / 61** |
 | Rust lint | `cargo clippy --workspace --all-targets -- -D warnings` | clean |
 | TS typecheck | `tsc --noEmit -p apps/desktop` and root | clean |
-| E2E (Playwright, Chrome) | `npm run test:e2e` | **14 / 14** |
+| E2E (Playwright, Chrome) | `npm run test:e2e` | **17 / 17** |
 | Windows cross-check | `cargo check --target x86_64-pc-windows-msvc -p platform-windows -p media-engine -p monitoros-core` | compiles |
 | macOS release bundle | `scripts/macos/build.sh` | `MonitorOS.app` (19 MB), DMG (7 MB) |
 

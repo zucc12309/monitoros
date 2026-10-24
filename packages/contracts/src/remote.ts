@@ -16,6 +16,7 @@ export type RemoteCommand =
   | { type: "pointer"; dx: number; dy: number; click?: boolean }
   | { type: "scroll"; dx: number; dy: number }
   | { type: "mode"; target: "tv" | "desktop" | "toggle" }
+  | { type: "fullscreen" }
   | { type: "ping" };
 
 export interface RemoteEnvelope {
@@ -35,6 +36,8 @@ export interface RemoteStatus {
   mode: "tv" | "desktop";
   /** A streaming service window is in front; `control` says how the remote drives it. */
   service?: { open: boolean; control?: "page" | "system" };
+  /** What the remote is driving right now. */
+  control?: "monitoros" | "page" | "system";
   /** "system" = touchpad moves the real pointer; "needs-permission" = macOS Accessibility not granted yet. */
   mouse?: "system" | "needs-permission";
   nowPlaying?: { title: string; positionSec: number; durationSec: number; paused: boolean };
@@ -81,6 +84,8 @@ export function validateCommand(raw: unknown): RemoteCommand {
     case "mode":
       if (!["tv", "desktop", "toggle"].includes(raw.target as string)) throw new Error("invalid mode");
       return { type: "mode", target: raw.target as "tv" };
+    case "fullscreen":
+      return { type: "fullscreen" };
     case "ping":
       return { type: "ping" };
     default:

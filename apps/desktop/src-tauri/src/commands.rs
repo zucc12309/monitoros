@@ -77,11 +77,19 @@ pub fn open_external(url: String) -> CmdResult<()> {
 pub fn open_service(app: AppHandle, state: State<'_, AppState>, url: String, mode: services::OpenMode) -> CmdResult<&'static str> {
     https_only(&url)?;
     let how = services::open(&app, &url, mode)?;
-    // Outside MonitorOS the remote drives the system keyboard/mouse until
-    // MonitorOS gets focus back (see lib.rs window events).
-    let external = how != "in-app";
-    state.external_service.store(external, std::sync::atomic::Ordering::SeqCst);
-    crate::merge_status(&state, serde_json::json!({ "service": { "open": true, "control": if external { "system" } else { "page" } } }));
+    crate::merge_status(&state, serde_json::json!({ "service": { "open": true } }));
+    if how == "browser" {
+        // A normal browser tab doesn't open full screen; once it is in front,
+        // send the OS full-screen shortcut (Ctrl+Cmd+F / F11).
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            let state = tauri::Manager::state::<AppState>(&app2);
+            if crate::front(&state) == crate::routing::Front::OtherApp {
+                state.input.send_actions(vec![crate::input::fullscreen_combo()]);
+            }
+        });
+    }
     Ok(how)
 }
 

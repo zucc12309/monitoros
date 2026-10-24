@@ -29,6 +29,8 @@ export interface Settings {
   iptvPlaylists: { id: string; name: string; url: string; allowLan: boolean }[];
   remoteEnabled: boolean;
   serviceOpenMode: ServiceOpenMode;
+  /** Let the paired remote send keys/mouse to other apps when they're in front. */
+  remoteControlsOtherApps: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   iptvPlaylists: [],
   remoteEnabled: false,
   serviceOpenMode: "in-app",
+  remoteControlsOtherApps: true,
 };
 
 export interface ProgressEntry extends WatchProgress {

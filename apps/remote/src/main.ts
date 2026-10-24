@@ -103,6 +103,7 @@ function renderRemote() {
   h(`
     <header>
       <span id="dot" class="dot"></span><span id="state">Connecting…</span>
+      <button id="fs" class="pill" aria-label="Full screen">⛶ Full screen</button>
       <button id="mode" class="pill">TV ⇄ Desktop</button>
     </header>
     <div id="now" class="now hidden"></div>
@@ -147,6 +148,7 @@ function renderRemote() {
   $("#vdown").onclick = () => send({ type: "volume", action: "down" });
   $("#mute").onclick = () => send({ type: "volume", action: "mute" });
   $("#mode").onclick = () => send({ type: "mode", target: "toggle" });
+  $("#fs").onclick = () => send({ type: "fullscreen" });
   $("#unpair").onclick = () => {
     conn?.close();
     setToken(null);
@@ -265,18 +267,23 @@ function setStatus(st: RemoteStatus) {
   if (mode) mode.textContent = st.mode === "tv" ? "Switch to Desktop" : "Switch to TV";
   if (!now) return;
   // A website (Netflix etc.) is showing: a mouse is the reliable way around it.
-  if (st.service?.open && !padModeLocked) setPadMode("cursor");
+  // Outside MonitorOS's own interface (a streaming page or any other app),
+  // a mouse is the reliable way to reach everything.
+  const outside = st.control ? st.control !== "monitoros" : !!st.service?.open;
+  if (!padModeLocked) setPadMode(outside ? "cursor" : "swipe");
   if (st.mouse === "needs-permission" && padMode === "cursor") {
     now.classList.remove("hidden");
     now.textContent = "To move the computer's mouse: on the computer open System Settings › Privacy & Security › Accessibility and turn on MonitorOS.";
     return;
   }
-  if (st.service?.open) {
+  if (outside) {
     now.classList.remove("hidden");
-    now.textContent = "Controlling the streaming app · Home returns to MonitorOS";
+    now.textContent =
+      st.control === "system"
+        ? "Controlling the app in front · Home returns to MonitorOS"
+        : "Controlling the streaming app · Home returns to MonitorOS";
     return;
   }
-  if (!padModeLocked && padMode === "cursor") setPadMode("swipe");
   if (st.nowPlaying) {
     now.classList.remove("hidden");
     now.textContent = `Now playing: ${st.nowPlaying.title}`;
