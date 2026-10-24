@@ -1,0 +1,15 @@
+[package]
+name = "gamepad-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Loopback-only DSU (Cemuhook) server exposing phone controllers to Dolphin"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+crc32fast = "1"
+rand.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

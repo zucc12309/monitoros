@@ -1346,6 +1346,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gamepad-bridge"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "rand 0.8.8",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "gaming-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "gdk"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

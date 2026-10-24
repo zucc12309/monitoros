@@ -8,6 +8,8 @@ members = [
   "crates/media-engine",
   "crates/platform-macos",
   "crates/platform-windows",
+  "crates/gamepad-bridge",
+  "crates/gaming-core",
   "apps/desktop/src-tauri",
 
 ]

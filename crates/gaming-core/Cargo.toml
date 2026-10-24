@@ -1,0 +1,10 @@
+[package]
+name = "gaming-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Game sessions and player slots for MonitorOS local multiplayer"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
