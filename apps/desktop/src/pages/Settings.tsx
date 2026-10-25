@@ -5,7 +5,7 @@ import { SUBSCRIPTION_SERVICES } from "@monitoros/metadata";
 import { SectionTitle } from "../components/Chrome";
 import { QrCode } from "../components/QrCode";
 import {
-  appInfo, audioOutputs, deviceRevoke, devicesList, displays, fetchJson, isTauri, mpvAudioDevices, remoteInfo, remoteStart, remoteStop, setAudioOutput, setAutostart, volumeGet, volumeSet,
+  appInfo, audioOutputs, deviceRevoke, devicesList, displays, fetchJson, isTauri, mpvAudioDevices, pairingTicket, remoteInfo, remoteStart, remoteStop, setAudioOutput, setAutostart, volumeGet, volumeSet,
   type AppInfo, type AudioDevice, type DisplayInfo, type PairedDevice, type RemoteInfo,
 } from "../lib/bridge";
 import { loadAddons, registry, saveAddons } from "../lib/catalog";
@@ -169,22 +169,31 @@ function Remote() {
   const controlsOtherApps = useApp((s) => s.settings.remoteControlsOtherApps);
   const [info, setInfo] = useState<RemoteInfo | null>(null);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
+  const [ticket, setTicket] = useState<string | null>(null);
   const refresh = () => {
     void remoteInfo().then(setInfo);
     void devicesList().then(setDevices);
   };
   useEffect(refresh, []);
+  // Scan-to-pair: the QR carries a one-time ticket, renewed before it expires.
+  useEffect(() => {
+    if (!isTauri || !info?.running) return;
+    const renew = () => void pairingTicket().then(setTicket).catch(() => setTicket(null));
+    renew();
+    const t = setInterval(renew, 90_000);
+    return () => clearInterval(t);
+  }, [info?.running]);
   if (!isTauri) return <p className="text-lg text-white/50">The iPhone remote server runs in the desktop app.</p>;
   return (
     <div className="max-w-[56.25rem] text-white">
       <p className="mb-4 text-lg text-white/55">Your iPhone must be on the same Wi-Fi. The server listens only on this computer's private LAN address and every phone needs your approval plus the code shown on the TV.</p>
       {info?.running ? (
         <div className="flex items-start gap-8">
-          {info.url && <QrCode text={info.url} size={200} />}
+          {info.url && <QrCode text={ticket ? `${info.url}/#pair=${ticket}` : info.url} size={200} />}
           <div>
-            <p className="text-white/60">On your iPhone, open</p>
+            <p className="text-white/60">Scan with the iPhone camera, then tap Allow here. Or open</p>
             <p className="text-3xl font-bold">{info.url}</p>
-            <p className="mt-2 text-white/50">then tap Share › Add to Home Screen.</p>
+            <p className="mt-2 text-white/50">Paired phones are remembered and reconnect by themselves. If you add it to the Home Screen, pair from the Home Screen icon: iOS keeps it separate from Safari.</p>
             <div className="mt-5"><Btn row="remote-ctl" onClick={() => void remoteStop().then(() => { updateSettings({ remoteEnabled: false }); refresh(); })}>Stop remote server</Btn></div>
           </div>
         </div>

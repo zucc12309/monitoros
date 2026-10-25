@@ -190,6 +190,9 @@ async fn guard_host_origin(State(s): State<AppState>, req: Request<Body>, next: 
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PairRequestBody {
     device_name: String,
+    /// From the TV's QR code (scan to pair).
+    #[serde(default)]
+    ticket: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -206,6 +209,7 @@ fn pairing_status(e: &PairingError) -> StatusCode {
         PairingError::WrongCode => StatusCode::UNAUTHORIZED,
         PairingError::TooManyAttempts | PairingError::Busy => StatusCode::TOO_MANY_REQUESTS,
         PairingError::InvalidName => StatusCode::BAD_REQUEST,
+        PairingError::BadTicket => StatusCode::GONE,
     }
 }
 
@@ -213,12 +217,16 @@ async fn pair_request(State(s): State<AppState>, Json(body): Json<PairRequestBod
     if !s.pair_limiter.lock().unwrap().allow(now_ms()) {
         return (StatusCode::TOO_MANY_REQUESTS, "slow down").into_response();
     }
-    let result = s.pairing.lock().unwrap().request(&body.device_name, now_ms());
+    let result = match &body.ticket {
+        Some(t) => s.pairing.lock().unwrap().request_scanned(&body.device_name, t, now_ms()),
+        None => s.pairing.lock().unwrap().request(&body.device_name, now_ms()),
+    };
     match result {
         Ok(p) => {
             let _ = s.events.send(ServerEvent::PairingRequested { request: p.clone() }).await;
-            // The code is NOT returned to the phone: the user reads it off the TV.
-            Json(serde_json::json!({ "requestId": p.request_id, "expiresInSec": 120 })).into_response()
+            // The code is NOT returned to the phone: the user reads it off the
+            // TV (or, scanned, the phone already holds it as its ticket).
+            Json(serde_json::json!({ "requestId": p.request_id, "expiresInSec": 120, "scanned": p.scanned })).into_response()
         }
         Err(e) => (pairing_status(&e), e.to_string()).into_response(),
     }
@@ -248,12 +256,18 @@ struct AuthMessage {
 async fn ws_session(s: AppState, socket: WebSocket) {
     let (mut tx, mut rx) = socket.split();
 
-    // 1. Authenticate within 5 s.
-    let device = match tokio::time::timeout(Duration::from_secs(5), rx.next()).await {
-        Ok(Some(Ok(Message::Text(t)))) => serde_json::from_str::<AuthMessage>(&t).ok().and_then(|a| s.pairing.lock().unwrap().authenticate(&a.auth, now_ms())),
+    // 1. Authenticate within 5 s. Only a token we don't know is a rejection
+    // (the phone then forgets it); a slow or broken socket just closes, so a
+    // flaky Wi-Fi moment never costs the phone its pairing.
+    let auth = match tokio::time::timeout(Duration::from_secs(5), rx.next()).await {
+        Ok(Some(Ok(Message::Text(t)))) => serde_json::from_str::<AuthMessage>(&t).ok(),
         _ => None,
     };
-    let Some(device) = device else {
+    let Some(auth) = auth else {
+        let _ = tx.close().await;
+        return;
+    };
+    let Some(device) = s.pairing.lock().unwrap().authenticate(&auth.auth, now_ms()) else {
         let _ = tx.send(Message::Text(r#"{"type":"auth","ok":false}"#.into())).await;
         let _ = tx.close().await;
         return;

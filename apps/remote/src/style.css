@@ -257,40 +257,77 @@ button.mini {
   border-radius: 999px;
   font-size: 14px;
 }
+/* Left 42%: steering. Middle: menu D-pad + Look back. Right: the pad. */
 .ctl-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: 42fr auto 46fr;
+  gap: 8px;
+  min-height: 0;
 }
 .ctl button,
-.stick {
+.steer-zone,
+.pad-zone {
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .ctl button.held {
   transform: scale(0.94);
   background: var(--player);
   border-color: transparent;
 }
+.steer-zone {
+  position: relative;
+  border-radius: 24px;
+  background: radial-gradient(ellipse at 35% 62%, rgba(255, 255, 255, 0.04), transparent 70%);
+}
+/* Rests lower-left; while touched it sits under the thumb (inline left/top). */
 .stick {
-  justify-self: start;
-  width: min(42vw, 42vh, 220px);
-  aspect-ratio: 1;
+  position: absolute;
+  left: 36%;
+  top: 60%;
+  width: 128px;
+  height: 128px;
+  transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(circle, #1d1d30 0%, #11111d 70%);
   border: 2px solid var(--line);
   display: grid;
   place-items: center;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.steer-zone.active .stick {
+  opacity: 1;
+  border-color: var(--player);
 }
 .knob {
-  width: 42%;
-  aspect-ratio: 1;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   background: var(--player);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.zone-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
   pointer-events: none;
-  transition: transform 0.05s linear;
+}
+.steer-zone.active .zone-hint {
+  visibility: hidden;
+}
+.ctl-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
 }
 .ctl-dpad {
   display: grid;
@@ -298,47 +335,55 @@ button.mini {
   gap: 4px;
 }
 .ctl-dpad button {
-  padding: 8px 12px;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 6px 10px;
   font-size: 14px;
 }
 .ctl-dpad [data-btn="up"] { grid-area: up; }
 .ctl-dpad [data-btn="down"] { grid-area: down; }
 .ctl-dpad [data-btn="left"] { grid-area: left; }
 .ctl-dpad [data-btn="right"] { grid-area: right; }
-/* Right thumb: A (most used) is biggest and lowest; B sits beside it; Item
- * is up and to the left, diagonal from A, so resting on A never hits it. */
-.ctl-face {
-  justify-self: end;
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-areas: "item ." "b a";
-  column-gap: 18px;
-  row-gap: 26px;
-  align-items: end;
+.pad-zone {
+  position: relative;
 }
-button.face {
-  width: min(22vw, 22vh, 104px);
-  aspect-ratio: 1;
+/* Placed by pad-layout.ts. */
+.pad-btn {
+  position: absolute;
   border-radius: 50%;
-  font-size: 26px;
-  font-weight: 800;
-  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  transition: transform 0.04s linear;
 }
-.face.a {
-  grid-area: a;
-  width: min(28vw, 30vh, 132px);
-  background: #1f8f4e;
+.pad-btn b {
+  font-size: 22px;
+  line-height: 1;
 }
-.face.a.auto {
+.pad-btn small {
+  margin-top: 3px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.pad-btn.gas { background: #1f8f4e; }
+.pad-btn.gas b { font-size: 30px; }
+.pad-btn.drift { background: #b8323a; }
+.pad-btn.item { background: #c98a12; color: #1a1206; }
+.pad-btn.item b,
+.pad-btn.trick b { font-size: 16px; }
+.pad-btn.trick { background: #2f5fb8; }
+.pad-btn.held {
+  transform: scale(0.93);
+  border-color: #fff;
+  filter: brightness(1.25);
+}
+.pad-btn.gas.auto {
   box-shadow: 0 0 0 4px #4ade80;
-}
-.face.b { grid-area: b; background: #b8323a; }
-.face.item {
-  grid-area: item;
-  width: min(19vw, 20vh, 88px);
-  background: #c98a12;
-  color: #1a1206;
-  font-size: 17px;
 }
 button.toggle.on {
   background: #1f8f4e;
@@ -358,11 +403,14 @@ button.toggle.on {
   color: #ff8a8a;
 }
 @media (orientation: portrait) {
+  /* Works upright too, but sideways gives both thumbs room. */
   .ctl-body {
     grid-template-columns: 1fr 1fr;
-    grid-template-areas: "dpad dpad" "stick face";
+    grid-template-rows: auto 1fr;
   }
-  .ctl-dpad { grid-area: dpad; justify-self: center; }
-  .stick { grid-area: stick; }
-  .ctl-face { grid-area: face; }
+  .ctl-mid {
+    grid-column: 1 / -1;
+    order: -1;
+    flex-direction: row;
+  }
 }

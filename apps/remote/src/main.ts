@@ -1,5 +1,5 @@
 import type { NavKey, RemoteCommand, RemoteStatus } from "@monitoros/contracts";
-import { RemoteConnection, completePairing, getToken, requestPairing, setToken, type ConnState } from "./connection";
+import { RemoteConnection, completePairing, getToken, requestPairing, setToken, takeTicket, type ConnState } from "./connection";
 import { controllerActive, join as rejoinGame, renderController, showPlayers, suspend as suspendController } from "./controller";
 import "./style.css";
 
@@ -58,6 +58,36 @@ function renderPairing(message = "") {
       renderPairing(`Couldn't start pairing: ${(e as Error).message}`);
     }
   };
+}
+
+/** From the TV's QR code; used if this phone isn't paired (any more). */
+let ticket = takeTicket();
+
+/** Scanned the TV's QR code: the TV only has to tap Allow, nothing to type. */
+async function scanPair(t: string) {
+  ticket = null; // single use
+  h(`
+    <section class="pair">
+      <div class="logo">M</div>
+      <h1>Tap Allow on the TV</h1>
+      <p class="muted">This phone is asking to be the remote. It will stay paired.</p>
+      <p class="msg" id="msg"></p>
+    </section>`);
+  try {
+    const requestId = await requestPairing(guessDeviceName(), t);
+    const until = Date.now() + 120_000;
+    while (Date.now() < until) {
+      const r = await completePairing(requestId, t);
+      if (!("waiting" in r)) {
+        setToken(r.token);
+        return start();
+      }
+      await new Promise((ok) => setTimeout(ok, 1000));
+    }
+    renderPairing("Not allowed on the TV in time. Scan the code again, or pair here.");
+  } catch (e) {
+    renderPairing(`${(e as Error).message}`);
+  }
 }
 
 function renderAwaitApproval(requestId: string, message = "") {
@@ -295,7 +325,8 @@ function setState(s: ConnState) {
   label.textContent = { connecting: "Connecting…", online: "Connected", offline: "Reconnecting…", unauthorized: "Pairing expired" }[s];
   if (s === "unauthorized") {
     setToken(null);
-    renderPairing("This phone's pairing was revoked or expired. Pair again.");
+    if (ticket) void scanPair(ticket);
+    else renderPairing("This phone's pairing was revoked or expired. Pair again.");
   }
 }
 
@@ -335,7 +366,7 @@ function setStatus(st: RemoteStatus) {
 
 function start() {
   const token = getToken();
-  if (!token) return renderPairing();
+  if (!token) return ticket ? void scanPair(ticket) : renderPairing();
   renderRemote();
   conn?.close();
   conn = new RemoteConnection(token, setState, setStatus);

@@ -125,28 +125,36 @@ pub async fn remote_start(app: AppHandle, state: State<'_, AppState>) -> Result<
             let dev = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../remote/dist");
             dev.join("index.html").is_file().then_some(dev)
         });
-        let cfg = ServerConfig {
+        let cfg = |port| ServerConfig {
             bind_ip: remote_server::default_bind_ip(),
-            port: REMOTE_PORT,
-            static_dir,
+            port,
+            static_dir: static_dir.clone(),
             pairing: state.pairing.clone(),
-            commands: ctx,
-            events: etx,
+            commands: ctx.clone(),
+            events: etx.clone(),
             status: state.status.subscribe(),
         };
-        let handle = match remote_server::start(cfg).await {
-            Ok(h) => h,
-            Err(_) => {
-                // Port busy: let the OS pick one.
-                let (ctx2, crx2) = tokio::sync::mpsc::channel(64);
-                let (etx2, erx2) = tokio::sync::mpsc::channel(32);
-                crx = crx2;
-                erx = erx2;
-                remote_server::start(ServerConfig { bind_ip: remote_server::default_bind_ip(), port: 0, static_dir: None, pairing: state.pairing.clone(), commands: ctx2, events: etx2, status: state.status.subscribe() })
-                    .await
-                    .map_err(|e| e.to_string())?
+        // The phone remembers its pairing per address, so keep the same port:
+        // right after a restart the old instance may still hold it briefly.
+        let mut started = None;
+        for _ in 0..10 {
+            match remote_server::start(cfg(REMOTE_PORT)).await {
+                Ok(h) => {
+                    started = Some(h);
+                    break;
+                }
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(500)).await,
+            }
+        }
+        let handle = match started {
+            Some(h) => h,
+            None => {
+                tracing::warn!("remote port {REMOTE_PORT} busy; using another (phones must open the new address)");
+                remote_server::start(cfg(0)).await.map_err(|e| e.to_string())?
             }
         };
+        drop((ctx, etx));
+        tracing::info!("remote server at {}", handle.url());
         let a = app.clone();
         tokio::spawn(async move {
             while let Some(c) = crx.recv().await {
@@ -163,7 +171,11 @@ pub async fn remote_start(app: AppHandle, state: State<'_, AppState>) -> Result<
             while let Some(ev) = erx.recv().await {
                 match &ev {
                     ServerEvent::DevicePaired { .. } => persist_devices(&a.state::<AppState>()),
-                    ServerEvent::DeviceConnected { device_id, .. } => crate::game::device_connected(&a.state::<AppState>(), device_id),
+                    ServerEvent::DeviceConnected { device_id, .. } => {
+                        // Connecting renewed the pairing's expiry: keep it.
+                        persist_devices(&a.state::<AppState>());
+                        crate::game::device_connected(&a.state::<AppState>(), device_id)
+                    }
                     ServerEvent::DeviceDisconnected { device_id } => crate::game::device_disconnected(&a.state::<AppState>(), device_id),
                     _ => {}
                 }
@@ -192,6 +204,12 @@ pub fn remote_status(state: State<'_, AppState>, status: serde_json::Value) {
 #[tauri::command]
 pub fn pairing_approve(state: State<'_, AppState>, request_id: String) -> Result<(), String> {
     state.pairing.lock().unwrap().approve(&request_id, now_ms()).map_err(|e| e.to_string())
+}
+
+/// One-time ticket for the scan-to-pair QR code on the TV.
+#[tauri::command]
+pub fn pairing_ticket(state: State<'_, AppState>) -> String {
+    state.pairing.lock().unwrap().issue_ticket(now_ms())
 }
 
 #[tauri::command]

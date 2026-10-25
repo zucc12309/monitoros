@@ -207,7 +207,8 @@ pub fn validate_game(path: &Path) -> Result<PathBuf, DolphinError> {
 
 /// Mapping for player `n` (0-based): Wii Remote + Nunchuk, which is how
 /// Mario Kart Wii and most party games play. Phone stick → Nunchuk stick,
-/// A/B on the phone → A/B, Item → Z.
+/// A/B on the phone → A/B, Item → Z, Look back → C, and Trick (R2) →
+/// shaking the Wii Remote, which is how tricks and wheelies are done.
 pub fn wiimote_section(n: usize) -> String {
     format!(
         "[Wiimote{}]\n\
@@ -230,7 +231,10 @@ pub fn wiimote_section(n: usize) -> String {
          Nunchuk/Stick/Up = `Left Y+`\n\
          Nunchuk/Stick/Down = `Left Y-`\n\
          Nunchuk/Stick/Left = `Left X-`\n\
-         Nunchuk/Stick/Right = `Left X+`\n",
+         Nunchuk/Stick/Right = `Left X+`\n\
+         Shake/X = R2\n\
+         Shake/Y = R2\n\
+         Shake/Z = R2\n",
         n + 1
     )
 }
@@ -345,6 +349,10 @@ mod tests {
         assert!(out.contains("Device = DSUClient/0/MonitorOS"));
         assert!(!out.contains("Left Click"));
         assert_eq!(out.matches("[Wiimote1]").count(), 1);
+        // Every Mario Kart Wii control has a phone input: Item, Look back, Trick (shake).
+        for line in ["Nunchuk/Buttons/Z = R1", "Nunchuk/Buttons/C = L1", "Shake/X = R2", "Shake/Y = R2", "Shake/Z = R2"] {
+            assert!(out.contains(line), "{line}");
+        }
         // Idempotent.
         assert_eq!(replace_sections(&out, &[wiimote_section(0)]), out);
     }

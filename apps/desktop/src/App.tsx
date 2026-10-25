@@ -65,7 +65,13 @@ function PairingDialog() {
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur" role="dialog" aria-modal aria-label="Pair a remote">
       <div className="w-[40rem] rounded-3xl bg-ink-850 p-10 text-center text-white shadow-2xl">
         <p className="text-xl text-white/60">“{pending.deviceName}” wants to control this TV</p>
-        {pending.approved ? (
+        {pending.approved && pending.scanned ? (
+          <>
+            <p className="mt-6 text-3xl font-semibold">Paired ✓</p>
+            <p className="mt-2 text-lg text-white/60">The phone connects by itself and stays paired.</p>
+            <button autoFocus data-nav-row="pair" onClick={() => setPending(null)} className="tv-focus mt-8 rounded-xl bg-white/10 px-8 py-3 text-xl">Done</button>
+          </>
+        ) : pending.approved ? (
           <>
             <p className="mt-6 text-lg text-white/60">Enter this code on your phone</p>
             <p className="mt-2 font-mono text-7xl font-bold tracking-[0.3em]">{pending.code}</p>

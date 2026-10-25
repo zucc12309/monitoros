@@ -176,13 +176,15 @@ export async function setAutostart(enabled: boolean): Promise<boolean> {
 
 // ---------- remote ----------
 export interface RemoteInfo { running: boolean; url: string | null; bindIp: string | null }
-export interface PendingPairing { requestId: string; deviceName: string; code: string; createdMs: number; approved: boolean }
+export interface PendingPairing { requestId: string; deviceName: string; code: string; createdMs: number; approved: boolean; scanned?: boolean }
 export interface PairedDevice { id: string; name: string; pairedMs: number; expiresMs: number; lastSeenMs: number }
 export const remoteInfo = () => (isTauri ? invoke<RemoteInfo>("remote_info") : Promise.resolve({ running: false, url: null, bindIp: null }));
 export const remoteStart = () => invoke<RemoteInfo>("remote_start");
 export const remoteStop = () => invoke<void>("remote_stop");
 export const pairingApprove = (requestId: string) => invoke<void>("pairing_approve", { requestId });
 export const pairingDeny = (requestId: string) => invoke<void>("pairing_deny", { requestId });
+/** One-time ticket for the scan-to-pair QR code. */
+export const pairingTicket = () => invoke<string>("pairing_ticket");
 export const devicesList = () => (isTauri ? invoke<PairedDevice[]>("devices_list") : Promise.resolve([]));
 export const deviceRevoke = (id: string) => invoke<void>("device_revoke", { id });
 export const pushRemoteStatus = (status: unknown) => (isTauri ? invoke<void>("remote_status", { status }) : Promise.resolve());

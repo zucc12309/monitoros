@@ -7,8 +7,13 @@
 //!     the code shown on the TV (`complete()`), proving it can see the screen.
 //!  3. Phone receives a 256-bit bearer token. Only its SHA-256 is stored.
 //!
-//! Codes expire after 2 minutes and allow 5 attempts. Tokens expire after 30
-//! days and can be revoked individually.
+//! Scan to pair: the TV can show a QR code carrying a one-time ticket. A
+//! phone that presents it has proven it can see the screen, so the ticket
+//! stands in for the typed code; the TV must still approve the request.
+//!
+//! Codes and tickets expire after 2 minutes; codes allow 5 attempts. Tokens
+//! expire after 30 days without use (each connection renews them) and can be
+//! revoked individually.
 
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
@@ -28,6 +33,9 @@ pub struct PendingPairing {
     pub code: String,
     pub created_ms: u64,
     pub approved: bool,
+    /// Came from scanning the TV's QR code: the phone needs no typed code.
+    #[serde(default)]
+    pub scanned: bool,
     #[serde(skip)]
     attempts: u8,
 }
@@ -57,6 +65,8 @@ pub enum PairingError {
     Busy,
     #[error("invalid device name")]
     InvalidName,
+    #[error("this QR code has expired; scan the one on the TV again")]
+    BadTicket,
 }
 
 pub fn hash_token(token: &str) -> String {
@@ -72,16 +82,51 @@ fn ct_eq(a: &str, b: &str) -> bool {
 pub struct PairingManager {
     pending: HashMap<String, PendingPairing>,
     devices: HashMap<String, PairedDevice>,
+    /// Scan-to-pair tickets → when they were issued.
+    tickets: HashMap<String, u64>,
+}
+
+fn random_id(len: usize) -> String {
+    rand::thread_rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()
 }
 
 impl PairingManager {
     pub fn with_devices(devices: Vec<PairedDevice>) -> Self {
-        Self { pending: HashMap::new(), devices: devices.into_iter().map(|d| (d.id.clone(), d)).collect() }
+        Self { devices: devices.into_iter().map(|d| (d.id.clone(), d)).collect(), ..Self::default() }
     }
 
     fn sweep(&mut self, now: u64) {
         self.pending.retain(|_, p| now.saturating_sub(p.created_ms) < CODE_TTL_MS);
+        self.tickets.retain(|_, at| now.saturating_sub(*at) < CODE_TTL_MS);
         self.devices.retain(|_, d| d.expires_ms > now);
+    }
+
+    /// A fresh one-time ticket for the TV's QR code. Only the newest few stay
+    /// valid, so an old photo of the screen soon stops working.
+    pub fn issue_ticket(&mut self, now: u64) -> String {
+        self.sweep(now);
+        while self.tickets.len() >= MAX_PENDING {
+            let oldest = self.tickets.iter().min_by_key(|(_, at)| **at).map(|(t, _)| t.clone()).expect("non-empty");
+            self.tickets.remove(&oldest);
+        }
+        let t = random_id(32);
+        self.tickets.insert(t.clone(), now);
+        t
+    }
+
+    /// Pairing request from a phone that scanned the QR code. The ticket is
+    /// used up and becomes this request's code, which the phone already has.
+    pub fn request_scanned(&mut self, device_name: &str, ticket: &str, now: u64) -> Result<PendingPairing, PairingError> {
+        self.sweep(now);
+        let found = self.tickets.keys().find(|t| ct_eq(t, ticket)).cloned().ok_or(PairingError::BadTicket)?;
+        let mut p = self.request(device_name, now)?;
+        self.tickets.remove(&found);
+        let stored = self.pending.get_mut(&p.request_id).expect("just added");
+        stored.code = found.clone();
+        stored.scanned = true;
+        p.code = found;
+        p.scanned = true;
+        Ok(p)
     }
 
     pub fn request(&mut self, device_name: &str, now: u64) -> Result<PendingPairing, PairingError> {
@@ -95,11 +140,12 @@ impl PairingManager {
         }
         let mut rng = rand::thread_rng();
         let p = PendingPairing {
-            request_id: (&mut rng).sample_iter(&Alphanumeric).take(24).map(char::from).collect(),
+            request_id: random_id(24),
             device_name: name.trim().to_string(),
             code: format!("{:06}", rng.gen_range(0..1_000_000)),
             created_ms: now,
             approved: false,
+            scanned: false,
             attempts: 0,
         };
         self.pending.insert(p.request_id.clone(), p.clone());
@@ -136,7 +182,7 @@ impl PairingManager {
             return Err(PairingError::WrongCode);
         }
         let p = self.pending.remove(request_id).expect("present");
-        let token: String = rand::thread_rng().sample_iter(&Alphanumeric).take(48).map(char::from).collect();
+        let token = random_id(48);
         let device = PairedDevice {
             id: p.request_id,
             name: p.device_name,
@@ -153,7 +199,9 @@ impl PairingManager {
         self.sweep(now);
         let h = hash_token(token);
         let d = self.devices.values_mut().find(|d| ct_eq(&d.token_hash, &h))?;
+        // Sliding expiry: a phone in regular use stays paired.
         d.last_seen_ms = now;
+        d.expires_ms = now + TOKEN_TTL_MS;
         Some(d.clone())
     }
 
@@ -223,6 +271,45 @@ mod tests {
         m.approve(&p.request_id, 0).unwrap();
         let (_, token) = m.complete(&p.request_id, &p.code, 0).unwrap();
         assert!(m.authenticate(&token, TOKEN_TTL_MS + 1).is_none());
+    }
+
+    #[test]
+    fn using_a_token_keeps_it_alive() {
+        let mut m = PairingManager::default();
+        let p = m.request("phone", 0).unwrap();
+        m.approve(&p.request_id, 0).unwrap();
+        let (_, token) = m.complete(&p.request_id, &p.code, 0).unwrap();
+        // Used every 20 days for 100 days: never expires.
+        for day in (20..=100).step_by(20) {
+            assert!(m.authenticate(&token, day * 24 * 3600 * 1000).is_some(), "day {day}");
+        }
+        assert!(m.authenticate(&token, 100 * 24 * 3600 * 1000 + TOKEN_TTL_MS + 1).is_none(), "unused for 30 days");
+    }
+
+    #[test]
+    fn scanned_ticket_replaces_the_code_but_not_approval() {
+        let mut m = PairingManager::default();
+        let t = m.issue_ticket(0);
+        assert_eq!(m.request_scanned("phone", "guess", 0), Err(PairingError::BadTicket));
+        let p = m.request_scanned("phone", &t, 1).unwrap();
+        assert!(p.scanned);
+        assert_eq!(m.request_scanned("phone", &t, 1), Err(PairingError::BadTicket), "single use");
+        assert_eq!(m.complete(&p.request_id, &t, 2), Err(PairingError::NotApproved), "TV must still allow it");
+        m.approve(&p.request_id, 3).unwrap();
+        let (_, token) = m.complete(&p.request_id, &t, 4).unwrap();
+        assert!(m.authenticate(&token, 5).is_some());
+    }
+
+    #[test]
+    fn tickets_expire_and_old_ones_drop_off() {
+        let mut m = PairingManager::default();
+        let t = m.issue_ticket(0);
+        assert_eq!(m.request_scanned("phone", &t, CODE_TTL_MS), Err(PairingError::BadTicket));
+        let first = m.issue_ticket(0);
+        for _ in 0..MAX_PENDING {
+            m.issue_ticket(1);
+        }
+        assert_eq!(m.request_scanned("phone", &first, 2), Err(PairingError::BadTicket));
     }
 
     #[test]

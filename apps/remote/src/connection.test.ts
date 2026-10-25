@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CONNECT_TIMEOUT_MS, RETRY_MAX_MS, RemoteConnection, type ConnState } from "./connection";
+import { CONNECT_TIMEOUT_MS, RETRY_MAX_MS, RemoteConnection, takeTicket, type ConnState } from "./connection";
 
 /** Minimal stand-in for the browser WebSocket the remote uses. */
 class FakeSocket {
@@ -114,5 +114,18 @@ describe("RemoteConnection", () => {
     conn.reconnectNow(true);
     expect(FakeSocket.all).toHaveLength(1);
     expect(states.at(-1)).toBe("unauthorized");
+  });
+});
+
+describe("scan-to-pair ticket", () => {
+  const loc = (hash: string) => ({ hash, pathname: "/", search: "" });
+  it("reads a ticket from the QR address and ignores anything else", () => {
+    vi.stubGlobal("history", { replaceState: vi.fn() });
+    expect(takeTicket(loc("#pair=Abc123Abc123Abc123Abc123Abc123Ab"))).toBe("Abc123Abc123Abc123Abc123Abc123Ab");
+    expect(history.replaceState).toHaveBeenCalledWith(null, "", "/"); // dropped from the address
+    expect(takeTicket(loc("#pair=short"))).toBeNull();
+    expect(takeTicket(loc("#pair=<script>alert(1)</script>"))).toBeNull();
+    expect(takeTicket(loc(""))).toBeNull();
+    vi.unstubAllGlobals();
   });
 });

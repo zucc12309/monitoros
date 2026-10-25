@@ -109,6 +109,49 @@ async fn invalid_token_is_rejected() {
 }
 
 #[tokio::test]
+async fn garbled_auth_closes_without_rejecting_the_pairing() {
+    // A rejection makes the phone forget its token, so only an unknown token
+    // may produce one; a broken first message just closes the socket.
+    let h = harness().await;
+    let mut s = ws(&h, &h.url.clone()).await.unwrap();
+    s.send(Message::Text("{not json".into())).await.unwrap();
+    loop {
+        match tokio::time::timeout(Duration::from_secs(3), s.next()).await.unwrap() {
+            Some(Ok(Message::Text(t))) => assert!(!t.contains(r#""ok":false"#), "must not reject: {t}"),
+            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+            Some(Ok(_)) => {}
+        }
+    }
+}
+
+#[tokio::test]
+async fn scan_to_pair_needs_ticket_and_tv_approval() {
+    let mut h = harness().await;
+    let c = client();
+    let origin = h.url.clone();
+    let post = |path: &str, body: serde_json::Value| c.post(format!("{}{path}", h.url)).header("origin", &origin).json(&body).send();
+    let r = post("/api/pair/request", serde_json::json!({ "deviceName": "Scanner", "ticket": "made-up" })).await.unwrap();
+    assert_eq!(r.status(), 410);
+
+    let ticket = h.pairing.lock().unwrap().issue_ticket(monitoros_core::now_ms());
+    let res: serde_json::Value = post("/api/pair/request", serde_json::json!({ "deviceName": "Scanner", "ticket": ticket })).await.unwrap().json().await.unwrap();
+    assert_eq!(res["scanned"], true);
+    let request_id = res["requestId"].as_str().unwrap().to_string();
+    match h.events.recv().await.unwrap() {
+        ServerEvent::PairingRequested { request } => assert!(request.scanned),
+        other => panic!("unexpected {other:?}"),
+    }
+    let r = post("/api/pair/complete", serde_json::json!({ "requestId": request_id, "code": ticket })).await.unwrap();
+    assert_eq!(r.status(), 202, "still needs Allow on the TV");
+    h.pairing.lock().unwrap().approve(&request_id, monitoros_core::now_ms()).unwrap();
+    let r: serde_json::Value = post("/api/pair/complete", serde_json::json!({ "requestId": request_id, "code": ticket })).await.unwrap().json().await.unwrap();
+    let token = r["token"].as_str().unwrap().to_string();
+    let mut s = ws(&h, &h.url.clone()).await.unwrap();
+    s.send(Message::Text(serde_json::json!({ "auth": token }).to_string())).await.unwrap();
+    assert_eq!(next_json(&mut s).await["ok"], true);
+}
+
+#[tokio::test]
 async fn revoked_device_is_disconnected() {
     let mut h = harness().await;
     let token = pair(&mut h).await;

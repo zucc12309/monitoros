@@ -44,10 +44,26 @@ async function post<T>(path: string, body: unknown): Promise<{ status: number; d
   }
 }
 
-export async function requestPairing(deviceName: string): Promise<string> {
-  const r = await post<{ requestId: string }>("api/pair/request", { deviceName });
+/** `ticket` comes from the TV's QR code: with it the phone needs no typed
+ * code, only Allow on the TV. */
+export async function requestPairing(deviceName: string, ticket?: string): Promise<string> {
+  const r = await post<{ requestId: string }>("api/pair/request", ticket ? { deviceName, ticket } : { deviceName });
   if (r.status !== 200 || typeof r.data === "string") throw new Error(typeof r.data === "string" ? r.data : `HTTP ${r.status}`);
   return r.data.requestId;
+}
+
+/** Reads a scan-to-pair ticket (`#pair=…`) and removes it from the address,
+ * so it isn't kept in history or reused. */
+export function takeTicket(loc: Pick<Location, "hash" | "pathname" | "search"> = location): string | null {
+  const m = /^#pair=([A-Za-z0-9]{16,64})$/.exec(loc.hash);
+  if (loc.hash) {
+    try {
+      history.replaceState(null, "", loc.pathname + loc.search);
+    } catch {
+      /* not fatal */
+    }
+  }
+  return m?.[1] ?? null;
 }
 
 /** 202 = still waiting for approval on the TV. */

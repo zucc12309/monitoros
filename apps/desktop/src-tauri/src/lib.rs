@@ -264,6 +264,7 @@ pub fn run() {
             remote::remote_status,
             remote::pairing_approve,
             remote::pairing_deny,
+            remote::pairing_ticket,
             remote::devices_list,
             remote::device_revoke,
             game::game_info,
