@@ -340,17 +340,30 @@ function start() {
   conn?.close();
   conn = new RemoteConnection(token, setState, setStatus);
   conn.connect();
-  setInterval(() => {
-    const lat = document.getElementById("lat");
-    if (lat && conn?.latencyMs != null) lat.textContent = `${conn.latencyMs} ms`;
-  }, 1000);
 }
 
+setInterval(() => {
+  const lat = document.getElementById("lat");
+  if (lat && conn?.latencyMs != null) lat.textContent = `${conn.latencyMs} ms`;
+}, 1000);
+
+/** Background longer than this: assume iOS killed the socket silently. */
+const STALE_AFTER_MS = 10_000;
+let hiddenAt = 0;
+
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") suspendController();
-  if (document.visibilityState === "visible" && controllerActive()) return; // the socket reconnects and rejoins
-  // iOS suspends sockets in the background; reconnect promptly on return.
-  if (document.visibilityState === "visible" && getToken()) start();
+  if (document.visibilityState === "hidden") {
+    hiddenAt = Date.now();
+    suspendController();
+    return;
+  }
+  if (!getToken()) return;
+  // Reuse a healthy socket; otherwise reconnect at once (no backoff wait).
+  if (conn) conn.reconnectNow(Date.now() - hiddenAt > STALE_AFTER_MS);
+  else start();
 });
+// Wi-Fi came back, or Safari restored the page from its cache.
+window.addEventListener("online", () => conn?.reconnectNow(true));
+window.addEventListener("pageshow", (e) => (e as PageTransitionEvent).persisted && conn?.reconnectNow(true));
 
 start();

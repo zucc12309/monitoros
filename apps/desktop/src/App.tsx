@@ -12,6 +12,7 @@ import { AppsPage, BrowsePage, FreePage, SearchPage } from "./pages/Discover";
 import { LibraryPage, LivePage } from "./pages/Local";
 import { SettingsPage } from "./pages/Settings";
 import { GamesPage } from "./pages/Games";
+import { GameGraphicsPage } from "./pages/GameGraphics";
 import { OnboardingPage } from "./pages/Onboarding";
 
 function pageKey(p: Page): string {
@@ -38,6 +39,8 @@ function PageView({ page }: { page: Page }) {
       return <LibraryPage />;
     case "games":
       return <GamesPage />;
+    case "game-graphics":
+      return <GameGraphicsPage />;
     case "settings":
       return <SettingsPage section={page.section} />;
     case "onboarding":

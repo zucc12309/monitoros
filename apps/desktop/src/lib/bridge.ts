@@ -189,8 +189,8 @@ export const pushRemoteStatus = (status: unknown) => (isTauri ? invoke<void>("re
 
 // ---------- games ----------
 export interface GamePlayerInfo { player: number; status: "empty" | "connected" | "reserved"; deviceId?: string; deviceName?: string }
-export interface GameInfo { dolphinVersion: string | null; dolphinError: string | null; gameFile: string | null; running: boolean; players: GamePlayerInfo[]; error: string | null }
-export const gameInfo = () => (isTauri ? invoke<GameInfo>("game_info") : Promise.resolve<GameInfo>({ dolphinVersion: null, dolphinError: "Games need the MonitorOS app", gameFile: null, running: false, players: [0, 1, 2, 3].map((player) => ({ player, status: "empty" })), error: null }));
+export interface GameInfo { dolphinVersion: string | null; dolphinError: string | null; gameFile: string | null; gameId: string | null; region: string | null; running: boolean; players: GamePlayerInfo[]; error: string | null }
+export const gameInfo = () => (isTauri ? invoke<GameInfo>("game_info") : Promise.resolve<GameInfo>({ dolphinVersion: null, dolphinError: "Games need the MonitorOS app", gameFile: null, gameId: null, region: null, running: false, players: [0, 1, 2, 3].map((player) => ({ player, status: "empty" })), error: null }));
 export async function pickGameFile(): Promise<string | null> {
   if (!isTauri) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -201,3 +201,79 @@ export const gameSetFile = (path: string) => invoke<void>("game_set_file", { pat
 export const gameLaunch = () => invoke<void>("game_launch");
 export const gameStop = () => invoke<void>("game_stop");
 export const gameRemovePlayer = (player: number) => invoke<void>("game_remove_player", { player });
+export async function pickDolphin(): Promise<string | null> {
+  if (!isTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = await open({ multiple: false, title: "Locate Dolphin (Dolphin.app or Dolphin.exe)" });
+  return typeof res === "string" ? res : null;
+}
+export const gameSetDolphin = (path: string) => invoke<string>("game_set_dolphin", { path });
+
+// ---------- graphics & HD textures ----------
+export type GraphicsPreset = "performance" | "balanced" | "ultra" | "custom";
+export type Backend = "dolphinDefault" | "metal" | "vulkan" | "openGl" | "d3d11" | "d3d12";
+export interface GraphicsSettings {
+  internalResolution: number;
+  anisotropy: number;
+  aspect: "auto" | "wide" | "standard" | "stretch";
+  msaa: number;
+  shaders: "synchronous" | "hybrid" | "skipDrawing";
+  vsync: boolean;
+  prefetchTextures: boolean;
+  backend: Backend;
+  fullscreen: boolean;
+}
+export interface EffectiveSetting { label: string; requested: string; effective: string; overriddenBy: string | null }
+export interface PackManifest { name: string; version: string | null; authors: string | null; packId: string; source: string; textures: number; bytes: number; installedMs: number }
+export interface PackStatus { manifest: PackManifest | null; folder: string; enabled: boolean; discoverable: boolean; filesPresent: number; otherFolders: string[] }
+export interface InstallJob { done: number; total: number; finished: boolean; error: string | null }
+export interface GraphicsInfo {
+  gameId: string | null;
+  region: string;
+  marioKartWii: boolean;
+  running: boolean;
+  dolphinError: string | null;
+  userDir: string | null;
+  texturesFolder: string | null;
+  preset: GraphicsPreset;
+  settings: GraphicsSettings;
+  presets: [GraphicsPreset, GraphicsSettings][];
+  backends: Backend[];
+  effective: EffectiveSetting[];
+  pack: PackStatus | null;
+  confirmedLoaded: number | null;
+  job: InstallJob | null;
+}
+export interface PackPreview {
+  source: string;
+  archive: boolean;
+  name: string;
+  version: string | null;
+  authors: string | null;
+  packId: string;
+  root: string;
+  textures: number;
+  textureBytes: number;
+  regions: string;
+  compatible: boolean | null;
+  gameId: string | null;
+  instructions: { file: string; text: string }[];
+  warnings: string[];
+}
+export const graphicsInfo = () => invoke<GraphicsInfo>("graphics_info");
+export const graphicsSet = (preset: GraphicsPreset, custom?: GraphicsSettings) => invoke<void>("graphics_set", { preset, custom: custom ?? null });
+export const graphicsRestoreDefaults = () => invoke<void>("graphics_restore_defaults");
+/** A ZIP or an extracted folder (two pickers: the OS dialog can't do both at once). */
+export async function pickTexturePack(folder: boolean): Promise<string | null> {
+  if (!isTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = folder
+    ? await open({ directory: true, multiple: false, title: "Choose the extracted texture pack folder" })
+    : await open({ multiple: false, title: "Choose the downloaded texture pack", filters: [{ name: "Texture pack", extensions: ["zip", "7z", "rar"] }] });
+  return typeof res === "string" ? res : null;
+}
+export const texturePackInspect = (path: string) => invoke<PackPreview>("texture_pack_inspect", { path });
+export const texturePackInstall = (path: string) => invoke<void>("texture_pack_install", { path });
+export const texturePackSetEnabled = (enabled: boolean) => invoke<void>("texture_pack_set_enabled", { enabled });
+export const texturePackRemove = () => invoke<void>("texture_pack_remove");
+export const textureFolderOpen = () => invoke<void>("texture_folder_open");

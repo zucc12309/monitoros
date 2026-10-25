@@ -10,6 +10,7 @@ export type Page =
   | { name: "free" }
   | { name: "library" }
   | { name: "games" }
+  | { name: "game-graphics" }
   | { name: "search"; query?: string }
   | { name: "detail"; item: MediaItem }
   | { name: "settings"; section?: string }

@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 
 const GAME_FILE_KEY: &str = "gameFile";
+/// A Dolphin the user located themselves (portable copy, Windows, …).
+const DOLPHIN_PATH_KEY: &str = "dolphinPath";
 
 #[derive(Default)]
 pub struct Games {
@@ -42,7 +44,7 @@ impl Games {
         }
     }
 
-    fn running(&self) -> bool {
+    pub(crate) fn running(&self) -> bool {
         let mut d = self.dolphin.lock().unwrap();
         if let Some(child) = d.as_mut() {
             if !matches!(child.try_wait(), Ok(None)) {
@@ -178,25 +180,36 @@ pub struct GameInfo {
     dolphin_version: Option<String>,
     dolphin_error: Option<String>,
     game_file: Option<String>,
+    game_id: Option<String>,
+    region: Option<&'static str>,
     running: bool,
     players: Vec<gaming_core::SlotView>,
     error: Option<String>,
 }
 
-fn game_file(state: &AppState) -> Option<PathBuf> {
+pub(crate) fn game_file(state: &AppState) -> Option<PathBuf> {
     state.store.lock().unwrap().get_setting::<String>(GAME_FILE_KEY).ok().flatten().map(PathBuf::from)
+}
+
+pub(crate) fn dolphin_install(state: &AppState) -> Result<dolphin::Install, dolphin::DolphinError> {
+    let custom = state.store.lock().unwrap().get_setting::<String>(DOLPHIN_PATH_KEY).ok().flatten().map(PathBuf::from);
+    dolphin::detect(custom.as_deref())
 }
 
 #[tauri::command]
 pub fn game_info(state: State<'_, AppState>) -> GameInfo {
-    let (dolphin_version, dolphin_error) = match dolphin::detect() {
+    let file = game_file(&state);
+    let game_id = file.as_deref().and_then(gaming_core::disc::read_game_id);
+    let (dolphin_version, dolphin_error) = match dolphin_install(&state) {
         Ok(i) => (Some(i.version), None),
         Err(e) => (None, Some(e.to_string())),
     };
     GameInfo {
         dolphin_version,
         dolphin_error,
-        game_file: game_file(&state).and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())),
+        game_file: file.and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())),
+        region: game_id.as_deref().map(|g| gaming_core::disc::Region::of(g).label()),
+        game_id,
         running: state.games.running(),
         players: state.games.slots.lock().unwrap().view(),
         error: state.games.error.lock().unwrap().clone(),
@@ -210,18 +223,29 @@ pub fn game_set_file(state: State<'_, AppState>, path: String) -> Result<(), Str
     state.store.lock().unwrap().set_setting(GAME_FILE_KEY, &path.to_string_lossy(), monitoros_core::now_ms() as i64).map_err(|e| e.to_string())
 }
 
+/// The user located Dolphin themselves. Kept only if it's a supported Dolphin.
+#[tauri::command]
+pub fn game_set_dolphin(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let install = dolphin::detect(Some(std::path::Path::new(&path))).map_err(|e| e.to_string())?;
+    let exe = install.executable.to_string_lossy().into_owned();
+    state.store.lock().unwrap().set_setting(DOLPHIN_PATH_KEY, &exe, monitoros_core::now_ms() as i64).map_err(|e| e.to_string())?;
+    Ok(install.version)
+}
+
 #[tauri::command]
 pub async fn game_launch(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if state.games.running() {
         return Ok(());
     }
-    let install = dolphin::detect().map_err(|e| e.to_string())?;
+    let install = dolphin_install(&state).map_err(|e| e.to_string())?;
     let file = game_file(&state).ok_or("Choose a game file first")?;
     if !ensure_bridge(&app).await {
         return Err(state.games.error.lock().unwrap().clone().unwrap_or_default());
     }
     dolphin::configure(&install.config_dir).map_err(|e| e.to_string())?;
-    let child = dolphin::launch(&install, &file).map_err(|e| e.to_string())?;
+    // Graphics go in as per-run arguments; controller files are configure()'s alone.
+    let config = crate::graphics::launch_config(&state, &install, gaming_core::disc::read_game_id(&file).as_deref());
+    let child = dolphin::launch(&install, &file, &config).map_err(|e| e.to_string())?;
     tracing::info!(version = install.version, "game: Dolphin started");
     *state.games.dolphin.lock().unwrap() = Some(child);
     publish(&state);
@@ -231,19 +255,22 @@ pub async fn game_launch(app: AppHandle, state: State<'_, AppState>) -> Result<(
 #[tauri::command]
 pub fn game_stop(state: State<'_, AppState>) {
     if let Some(mut child) = state.games.dolphin.lock().unwrap().take() {
-        // Ask politely first so Dolphin can finish writing saves.
+        // Ask politely first so Dolphin can finish writing saves (it was
+        // launched with no stop confirmation, so SIGTERM really stops it).
         #[cfg(unix)]
         {
             let _ = std::process::Command::new("kill").arg("-TERM").arg(child.id().to_string()).status();
-            for _ in 0..30 {
+            for _ in 0..50 {
                 if !matches!(child.try_wait(), Ok(None)) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
         }
+        let forced = matches!(child.try_wait(), Ok(None));
         let _ = child.kill();
         let _ = child.wait();
+        tracing::info!(forced, "game: Dolphin stopped");
     }
     publish(&state);
 }

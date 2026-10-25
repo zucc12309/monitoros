@@ -56,31 +56,136 @@ pub fn version_supported(v: &str) -> bool {
 pub struct Install {
     pub executable: PathBuf,
     pub version: String,
+    /// Dolphin's User folder, resolved the same way Dolphin resolves it and
+    /// passed back with `-u` so both always agree.
+    pub user_dir: PathBuf,
     pub config_dir: PathBuf,
+    /// Dolphin's bundled `Sys` folder (shipped per-game settings live here).
+    pub sys_dir: PathBuf,
 }
 
-/// Finds an installed, supported Dolphin.
-pub fn detect() -> Result<Install, DolphinError> {
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-        let app = [PathBuf::from("/Applications/Dolphin.app"), home.join("Applications/Dolphin.app")]
-            .into_iter()
-            .find(|p| p.join("Contents/MacOS/Dolphin").is_file())
-            .ok_or(DolphinError::NotInstalled)?;
-        let plist = std::fs::read_to_string(app.join("Contents/Info.plist"))?;
-        let version = plist_string(&plist, "CFBundleShortVersionString").ok_or(DolphinError::UnknownVersion)?;
-        if !version_supported(&version) {
-            return Err(DolphinError::TooOld(version));
-        }
-        Ok(Install {
-            executable: app.join("Contents/MacOS/Dolphin"),
-            version,
-            config_dir: home.join("Library/Application Support/Dolphin/Config"),
-        })
+/// Finds an installed, supported Dolphin. `custom` is a Dolphin the user
+/// located themselves (a portable copy, or anywhere on Windows).
+pub fn detect(custom: Option<&Path>) -> Result<Install, DolphinError> {
+    // A picked macOS app bundle means the executable inside it.
+    let custom = custom.map(|p| if p.extension().is_some_and(|e| e == "app") { p.join("Contents/MacOS/Dolphin") } else { p.to_path_buf() });
+    let exe = custom.filter(|p| p.is_file()).or_else(default_executable).ok_or(DolphinError::NotInstalled)?;
+    let version = read_version(&exe).ok_or(DolphinError::UnknownVersion)?;
+    if !version_supported(&version) {
+        return Err(DolphinError::TooOld(version));
     }
-    #[cfg(not(target_os = "macos"))]
-    Err(DolphinError::NotInstalled)
+    let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let user_dir = platform_user_dir(&exe_dir);
+    let sys_dir = match exe_dir.parent() {
+        Some(contents) if cfg!(target_os = "macos") => contents.join("Resources/Sys"),
+        _ => exe_dir.join("Sys"),
+    };
+    Ok(Install { config_dir: user_dir.join("Config"), executable: exe, version, user_dir, sys_dir })
+}
+
+fn home() -> PathBuf {
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_default()
+}
+
+fn default_executable() -> Option<PathBuf> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    let candidates: Vec<PathBuf> = if cfg!(target_os = "macos") {
+        vec![PathBuf::from("/Applications/Dolphin.app/Contents/MacOS/Dolphin"), home().join("Applications/Dolphin.app/Contents/MacOS/Dolphin")]
+    } else if cfg!(windows) {
+        [env("ProgramFiles").map(|p| p.join("Dolphin")), env("ProgramFiles").map(|p| p.join("Dolphin-x64")), env("LOCALAPPDATA").map(|p| p.join("Programs/Dolphin")), Some(home().join("Dolphin-x64"))]
+            .into_iter()
+            .flatten()
+            .map(|d| d.join("Dolphin.exe"))
+            .collect()
+    } else {
+        vec![]
+    };
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// macOS: the app bundle's Info.plist. Windows: the exe's ProductVersion.
+fn read_version(exe: &Path) -> Option<String> {
+    if cfg!(target_os = "macos") {
+        let plist = std::fs::read_to_string(exe.parent()?.parent()?.join("Info.plist")).ok()?;
+        plist_string(&plist, "CFBundleShortVersionString")
+    } else {
+        pe_product_version(&std::fs::read(exe).ok()?)
+    }
+}
+
+/// Reads `ProductVersion` from a Windows executable's version resource
+/// (a UTF-16 key followed by a 4-byte-aligned UTF-16 value).
+pub fn pe_product_version(bytes: &[u8]) -> Option<String> {
+    let key: Vec<u8> = "ProductVersion\0".encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let at = bytes.windows(key.len()).position(|w| w == key.as_slice())?;
+    let mut i = (at + key.len()).next_multiple_of(4);
+    let mut out = String::new();
+    while i + 1 < bytes.len() && out.len() < 32 {
+        let c = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+        if c == 0 {
+            break;
+        }
+        out.push(char::from_u32(c.into())?);
+        i += 2;
+    }
+    let v = out.trim().to_string();
+    (!v.is_empty()).then_some(v)
+}
+
+/// Dolphin's macOS/Linux rule (UICommon::SetUserDirectory): `portable.txt`
+/// next to the executable, then `$DOLPHIN_EMU_USERPATH`, then the default.
+pub fn unix_user_dir(exe_dir: &Path, env_path: Option<PathBuf>, home: &Path) -> PathBuf {
+    if exe_dir.join("portable.txt").exists() {
+        exe_dir.join("User")
+    } else if let Some(p) = env_path.filter(|p| !p.as_os_str().is_empty()) {
+        p
+    } else {
+        home.join("Library/Application Support/Dolphin")
+    }
+}
+
+/// Dolphin's Windows rule: portable.txt or the LocalUserConfig registry
+/// flag → `<exe>\User`; else the UserConfigPath registry value; else an
+/// existing `Documents\Dolphin Emulator`; else `%APPDATA%\Dolphin Emulator`.
+pub fn windows_user_dir(exe_dir: &Path, local_user_config: bool, user_config_path: Option<PathBuf>, documents: Option<PathBuf>, appdata: Option<PathBuf>) -> PathBuf {
+    let old = documents.map(|d| d.join("Dolphin Emulator")).filter(|d| d.exists());
+    if local_user_config || exe_dir.join("portable.txt").exists() {
+        exe_dir.join("User")
+    } else if let Some(p) = user_config_path {
+        p
+    } else if let Some(p) = old {
+        p
+    } else if let Some(a) = appdata {
+        a.join("Dolphin Emulator")
+    } else {
+        exe_dir.join("User")
+    }
+}
+
+fn platform_user_dir(exe_dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        let key = r"HKCU\Software\Dolphin Emulator";
+        let local = reg_value(key, "LocalUserConfig").is_some_and(|v| v.trim_start_matches("0x").trim() != "0");
+        let docs = reg_value(r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders", "Personal")
+            .map(|v| PathBuf::from(v.replace("%USERPROFILE%", &home().to_string_lossy())))
+            .or_else(|| Some(home().join("Documents")));
+        windows_user_dir(exe_dir, local, reg_value(key, "UserConfigPath").map(PathBuf::from), docs, std::env::var_os("APPDATA").map(PathBuf::from))
+    } else {
+        unix_user_dir(exe_dir, std::env::var_os("DOLPHIN_EMU_USERPATH").map(PathBuf::from), &home())
+    }
+}
+
+/// One registry value via `reg query` (argument list, no shell).
+fn reg_value(key: &str, name: &str) -> Option<String> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let out = Command::new("reg").args(["query", key, "/v", name]).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let line = text.lines().find(|l| l.trim_start().starts_with(name))?;
+    let mut parts = line.trim().splitn(3, "    ").map(str::trim);
+    let (_, _, value) = (parts.next()?, parts.next()?, parts.next()?);
+    Some(value.to_string())
 }
 
 fn plist_string(plist: &str, key: &str) -> Option<String> {
@@ -176,14 +281,31 @@ pub fn configure(config_dir: &Path) -> Result<(), DolphinError> {
     Ok(())
 }
 
-/// Starts the game full screen without Dolphin's own menus. Arguments are
-/// passed as a list (no shell), and the path is validated first.
-pub fn launch(install: &Install, game: &Path) -> Result<Child, DolphinError> {
+/// Without this Dolphin answers SIGTERM with a "stop emulation?" dialog
+/// (MainWindow::RequestStop) and keeps running, so Stop game could only end
+/// it with SIGKILL. Applies to that run only; the user's setting is kept.
+pub const NO_STOP_CONFIRM: &str = "Dolphin.Interface.ConfirmStop=False";
+
+/// Dolphin's arguments: our resolved User folder, batch mode, one `-C`
+/// per setting (each `System.Section.Key=Value`, built from fixed keys,
+/// never from user text), then the validated game.
+pub fn launch_args(install: &Install, game: &Path, config: &[String]) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = vec!["-u".into(), install.user_dir.clone().into_os_string(), "--batch".into(), "-C".into(), NO_STOP_CONFIRM.into()];
+    for c in config {
+        args.push("-C".into());
+        args.push(c.into());
+    }
+    args.push("--exec".into());
+    args.push(game.as_os_str().to_owned());
+    args
+}
+
+/// Starts the game without Dolphin's own menus. Arguments are passed as a
+/// list (no shell), and the path is validated first.
+pub fn launch(install: &Install, game: &Path, config: &[String]) -> Result<Child, DolphinError> {
     let game = validate_game(game)?;
     Ok(Command::new(&install.executable)
-        .arg("--batch")
-        .arg("--exec")
-        .arg(&game)
+        .args(launch_args(install, &game, config))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -258,5 +380,50 @@ mod tests {
         assert_eq!(validate_game(&dir), Err(DolphinError::NotAGame));
         assert_eq!(validate_game(Path::new("/nonexistent/x.iso")), Err(DolphinError::NotAGame));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn user_dir_follows_dolphins_rules() {
+        let dir = std::env::temp_dir().join(format!("monitoros-userdir-{}", std::process::id()));
+        let exe = dir.join("exe");
+        let home = dir.join("home");
+        std::fs::create_dir_all(&exe).unwrap();
+        assert_eq!(unix_user_dir(&exe, None, &home), home.join("Library/Application Support/Dolphin"));
+        assert_eq!(unix_user_dir(&exe, Some(dir.join("custom")), &home), dir.join("custom"));
+        assert_eq!(unix_user_dir(&exe, Some(PathBuf::new()), &home), home.join("Library/Application Support/Dolphin"));
+
+        let docs = dir.join("Documents");
+        let appdata = dir.join("AppData");
+        assert_eq!(windows_user_dir(&exe, false, None, Some(docs.clone()), Some(appdata.clone())), appdata.join("Dolphin Emulator"));
+        std::fs::create_dir_all(docs.join("Dolphin Emulator")).unwrap();
+        assert_eq!(windows_user_dir(&exe, false, None, Some(docs.clone()), Some(appdata.clone())), docs.join("Dolphin Emulator"));
+        assert_eq!(windows_user_dir(&exe, false, Some(dir.join("reg")), Some(docs.clone()), None), dir.join("reg"));
+        assert_eq!(windows_user_dir(&exe, true, Some(dir.join("reg")), None, None), exe.join("User"));
+
+        // portable.txt wins on every platform.
+        std::fs::write(exe.join("portable.txt"), "").unwrap();
+        assert_eq!(unix_user_dir(&exe, Some(dir.join("custom")), &home), exe.join("User"));
+        assert_eq!(windows_user_dir(&exe, false, Some(dir.join("reg")), None, None), exe.join("User"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn reads_windows_product_version() {
+        let mut exe = b"MZ....".to_vec();
+        exe.extend("ProductVersion\0".encode_utf16().flat_map(u16::to_le_bytes));
+        while !exe.len().is_multiple_of(4) {
+            exe.push(0);
+        }
+        exe.extend("2609a\0".encode_utf16().flat_map(u16::to_le_bytes));
+        assert_eq!(pe_product_version(&exe).as_deref(), Some("2609a"));
+        assert_eq!(pe_product_version(b"MZ no version here"), None);
+    }
+
+    #[test]
+    fn launch_args_are_a_fixed_list() {
+        let install = Install { executable: "/d".into(), version: "2609a".into(), user_dir: "/u dir".into(), config_dir: "/u dir/Config".into(), sys_dir: "/s".into() };
+        let args = launch_args(&install, Path::new("/g/Mario Kart; rm -rf.rvz"), &["Graphics.Settings.InternalResolution=3".into()]);
+        let args: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(args, ["-u", "/u dir", "--batch", "-C", NO_STOP_CONFIRM, "-C", "Graphics.Settings.InternalResolution=3", "--exec", "/g/Mario Kart; rm -rf.rvz"]);
     }
 }

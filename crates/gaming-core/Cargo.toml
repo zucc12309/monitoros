@@ -7,4 +7,6 @@ description = "Game sessions and player slots for MonitorOS local multiplayer"
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

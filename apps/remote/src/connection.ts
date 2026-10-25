@@ -8,6 +8,13 @@ import { validateCommand } from "@monitoros/contracts";
 
 export type ConnState = "connecting" | "online" | "offline" | "unauthorized";
 
+/** A socket that hasn't authenticated by then is treated as dead (iOS can
+ * leave one "connecting" for a minute after Wi-Fi changes or sleep). */
+export const CONNECT_TIMEOUT_MS = 4000;
+/** Retries are cheap on the home network, so keep the wait short. */
+export const RETRY_BASE_MS = 250;
+export const RETRY_MAX_MS = 2000;
+
 const TOKEN_KEY = "monitoros-remote-token";
 
 export function getToken(): string | null {
@@ -56,6 +63,7 @@ export class RemoteConnection {
   private seq = 0;
   private retry = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private connectTimer: ReturnType<typeof setTimeout> | undefined;
   private closedByUser = false;
   private pending = new Map<number, number>(); // seq -> sentAt (for latency)
   latencyMs: number | null = null;
@@ -71,14 +79,20 @@ export class RemoteConnection {
 
   connect() {
     this.closedByUser = false;
-    this.onState("connecting");
+    clearTimeout(this.timer);
+    this.setState("connecting");
     const url = new URL("ws", location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(url);
     this.ws = ws;
     this.seq = 0;
+    clearTimeout(this.connectTimer);
+    this.connectTimer = setTimeout(() => {
+      if (this.ws === ws && this.state !== "online") ws.close(); // onclose retries
+    }, CONNECT_TIMEOUT_MS);
     ws.onopen = () => ws.send(JSON.stringify({ auth: this.token }));
     ws.onmessage = (e) => {
+      if (this.ws !== ws) return;
       let msg: { type?: string; ok?: boolean; seq?: number; status?: RemoteStatus; deviceId?: string };
       try {
         msg = JSON.parse(String(e.data));
@@ -86,13 +100,14 @@ export class RemoteConnection {
         return;
       }
       if (msg.type === "auth") {
+        clearTimeout(this.connectTimer);
         if (msg.ok) {
           this.retry = 0;
           if (typeof msg.deviceId === "string") this.deviceId = msg.deviceId;
-          this.onState("online");
+          this.setState("online");
         } else {
           this.closedByUser = true;
-          this.onState("unauthorized");
+          this.setState("unauthorized");
         }
       } else if (msg.type === "ack" && typeof msg.seq === "number") {
         const sent = this.pending.get(msg.seq);
@@ -103,13 +118,34 @@ export class RemoteConnection {
       }
     };
     ws.onclose = () => {
+      if (this.ws !== ws) return; // replaced by reconnectNow()
       this.ws = null;
+      clearTimeout(this.connectTimer);
       if (this.closedByUser) return;
-      this.onState("offline");
-      // Exponential backoff, capped at 10 s.
-      const delay = Math.min(10_000, 500 * 2 ** this.retry++);
+      this.setState("offline");
+      const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** this.retry++);
       this.timer = setTimeout(() => this.connect(), delay);
     };
+  }
+
+  private setState(s: ConnState) {
+    this.state = s;
+    this.onState(s);
+  }
+
+  /** Back in front, or the network returned: don't wait for the retry timer.
+   * `stale` forces a fresh socket even if the old one still looks open
+   * (after a long background stretch iOS often leaves a dead one). */
+  reconnectNow(stale = false) {
+    if (this.closedByUser && this.state === "unauthorized") return;
+    const open = this.ws?.readyState === WebSocket.OPEN && this.state === "online";
+    if (open && !stale) return;
+    if (this.ws?.readyState === WebSocket.CONNECTING && !stale) return; // already trying
+    const old = this.ws;
+    this.ws = null;
+    old?.close();
+    this.retry = 0;
+    this.connect();
   }
 
   send(command: RemoteCommand): boolean {
@@ -126,6 +162,9 @@ export class RemoteConnection {
   close() {
     this.closedByUser = true;
     clearTimeout(this.timer);
-    this.ws?.close();
+    clearTimeout(this.connectTimer);
+    const ws = this.ws;
+    this.ws = null;
+    ws?.close();
   }
 }

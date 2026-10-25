@@ -3,6 +3,7 @@
 
 mod commands;
 mod game;
+mod graphics;
 mod input;
 mod remote;
 mod routing;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub service_focused: std::sync::atomic::AtomicBool,
     pub input: input::SystemInput,
     pub games: game::Games,
+    pub graphics: graphics::Graphics,
 }
 
 /// Shallow-merge `patch` into the status object pushed to paired remotes.
@@ -189,6 +191,7 @@ pub fn run() {
                 service_focused: std::sync::atomic::AtomicBool::new(false),
                 input: input::SystemInput::default(),
                 games: game::Games::default(),
+                graphics: graphics::Graphics::default(),
             });
 
             let gs = app.global_shortcut();
@@ -268,6 +271,15 @@ pub fn run() {
             game::game_launch,
             game::game_stop,
             game::game_remove_player,
+            game::game_set_dolphin,
+            graphics::graphics_info,
+            graphics::graphics_set,
+            graphics::graphics_restore_defaults,
+            graphics::texture_pack_inspect,
+            graphics::texture_pack_install,
+            graphics::texture_pack_set_enabled,
+            graphics::texture_pack_remove,
+            graphics::texture_folder_open,
         ])
         .run(tauri::generate_context!())
         .expect("error while running MonitorOS");

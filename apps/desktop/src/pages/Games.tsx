@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SectionTitle } from "../components/Chrome";
-import { gameInfo, gameLaunch, gameRemovePlayer, gameSetFile, gameStop, pickGameFile, type GameInfo } from "../lib/bridge";
+import { gameInfo, gameLaunch, gameRemovePlayer, gameSetDolphin, gameSetFile, gameStop, pickDolphin, pickGameFile, type GameInfo } from "../lib/bridge";
 import { useApp } from "../store/app";
 
 const COLOURS = ["#3b82f6", "#ef4444", "#22c55e", "#eab308"];
@@ -78,12 +78,24 @@ export function GamesPage() {
         <button data-nav-row="game-actions" disabled={busy} onClick={choose} className="tv-focus rounded-xl bg-white/10 px-5 py-3 text-lg text-white">
           {info.gameFile ? "Change game" : "Choose game file"}
         </button>
+        {info.gameFile && (
+          <button data-nav-row="game-actions" onClick={() => navigate({ name: "game-graphics" })} className="tv-focus rounded-xl bg-white/10 px-5 py-3 text-lg text-white">Graphics &amp; Enhancements</button>
+        )}
         <button data-nav-row="game-actions" onClick={() => navigate({ name: "settings", section: "remote" })} className="tv-focus rounded-xl bg-white/10 px-5 py-3 text-lg text-white">Pair a phone</button>
+        {info.dolphinError && (
+          <button data-nav-row="game-actions" disabled={busy} onClick={() => run(async () => { const p = await pickDolphin(); if (p) toast(`Using Dolphin ${await gameSetDolphin(p)}`); })} className="tv-focus rounded-xl bg-white/10 px-5 py-3 text-lg text-white">Locate Dolphin…</button>
+        )}
       </div>
 
       <dl className="grid max-w-[56.25rem] grid-cols-[12rem_1fr] gap-y-2 text-lg">
         <dt className="text-white/45">Game</dt>
         <dd className="truncate text-white/85">{info.gameFile ?? "None chosen"}</dd>
+        {info.gameId && (
+          <>
+            <dt className="text-white/45">Game ID</dt>
+            <dd className="text-white/85">{info.gameId} · {info.region}</dd>
+          </>
+        )}
         <dt className="text-white/45">Dolphin</dt>
         <dd className={info.dolphinError ? "text-amber-300" : "text-white/85"}>{info.dolphinError ?? `Version ${info.dolphinVersion}`}</dd>
         {info.error && (

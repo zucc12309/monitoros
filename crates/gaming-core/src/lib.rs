@@ -5,7 +5,11 @@
 //! slot. On disconnect the slot is held for a grace period so a phone that
 //! drops off Wi-Fi gets the same player back; its input is released at once.
 
+pub mod disc;
 pub mod dolphin;
+pub mod graphics;
+pub mod texture_install;
+pub mod textures;
 
 use serde::Serialize;
 use std::time::{Duration, Instant};
