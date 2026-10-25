@@ -210,7 +210,7 @@ export async function pickDolphin(): Promise<string | null> {
 export const gameSetDolphin = (path: string) => invoke<string>("game_set_dolphin", { path });
 
 // ---------- graphics & HD textures ----------
-export type GraphicsPreset = "performance" | "balanced" | "ultra" | "custom";
+export type GraphicsPreset = "performance" | "balanced" | "ultra" | "fourK" | "custom";
 export type Backend = "dolphinDefault" | "metal" | "vulkan" | "openGl" | "d3d11" | "d3d12";
 export interface GraphicsSettings {
   internalResolution: number;
@@ -222,6 +222,7 @@ export interface GraphicsSettings {
   prefetchTextures: boolean;
   backend: Backend;
   fullscreen: boolean;
+  fxaa: boolean;
 }
 export interface EffectiveSetting { label: string; requested: string; effective: string; overriddenBy: string | null }
 export interface PackManifest { name: string; version: string | null; authors: string | null; packId: string; source: string; textures: number; bytes: number; installedMs: number }

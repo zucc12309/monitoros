@@ -10,7 +10,8 @@ const RES_LABEL: Record<number, string> = { 1: "Native (480p)", 2: "2× (≈ 720
 const PRESETS: { id: Exclude<GraphicsPreset, "custom">; title: string; blurb: string; tint: string }[] = [
   { id: "performance", title: "Performance", blurb: "Smoothest four-player split screen", tint: "from-emerald-500/25" },
   { id: "balanced", title: "Balanced", blurb: "Recommended: sharp and stable", tint: "from-accent/30" },
-  { id: "ultra", title: "Ultra", blurb: "Maximum detail, most demanding", tint: "from-amber-500/25" },
+  { id: "ultra", title: "Ultra", blurb: "Very sharp, still light on your Mac", tint: "from-amber-500/25" },
+  { id: "fourK", title: "4K", blurb: "Sharpest, for a 4K TV, one player", tint: "from-sky-500/25" },
 ];
 const ASPECTS = [["auto", "Auto"], ["wide", "16:9"], ["standard", "4:3"], ["stretch", "Stretch to window"]] as const;
 const SHADERS = [["hybrid", "Hybrid ubershaders (low stutter)"], ["skipDrawing", "Skip drawing until ready (lowest cost)"], ["synchronous", "Synchronous (may stutter)"]] as const;
@@ -28,6 +29,7 @@ function human(label: string, v: string): string {
     case "Anisotropic filtering": return `${2 ** Number(v)}×`;
     case "Aspect ratio": return ["Auto", "16:9", "4:3", "Stretch"][Number(v)] ?? v;
     case "Anti-aliasing": return Number(v) <= 1 ? "Off" : `${v}× MSAA`;
+    case "Edge smoothing (FXAA)": return v === "FXAA" ? "On" : v || "Off";
     case "Shader compilation": return ["Synchronous", "Synchronous ubershaders", "Hybrid ubershaders", "Skip drawing"][Number(v)] ?? v;
     default: return v;
   }
@@ -126,7 +128,7 @@ export function GameGraphicsPage() {
 
       <div className="max-w-[75rem] px-10">
         <h2 className="mb-3 text-2xl font-bold text-white">Graphics preset</h2>
-        <div className="mb-3 grid grid-cols-4 gap-4">
+        <div className="mb-3 grid grid-cols-5 gap-4">
           {PRESETS.map((p) => {
             const ps = info.presets.find(([id]) => id === p.id)?.[1];
             const on = info.preset === p.id;
@@ -137,7 +139,7 @@ export function GameGraphicsPage() {
                   <span className="block text-2xl font-bold text-white">{p.title}</span>
                   <span className="block text-base text-white/60">{p.blurb}</span>
                 </span>
-                {ps && <span className="text-base text-white/80">{RES_LABEL[ps.internalResolution]} · {ps.anisotropy}× filtering</span>}
+                {ps && <span className="text-base text-white/80">{RES_LABEL[ps.internalResolution]} · {ps.anisotropy}× filtering{ps.fxaa ? " · FXAA" : ""}</span>}
               </button>
             );
           })}
@@ -219,6 +221,7 @@ export function GameGraphicsPage() {
           <Row label="Anisotropic filtering" value={`${s.anisotropy}×`} hint="Sharper textures at angles" onClick={() => custom({ anisotropy: next([1, 2, 4, 8, 16], s.anisotropy) })} />
           <Row label="Aspect ratio" value={ASPECTS.find(([v]) => v === s.aspect)?.[1] ?? ""} onClick={() => custom({ aspect: next(ASPECTS.map(([v]) => v), s.aspect) })} />
           <Row label="Anti-aliasing" value={s.msaa <= 1 ? "Off" : `${s.msaa}× MSAA`} hint={aa?.overriddenBy ? `Mario Kart Wii needs it off (${aa.overriddenBy})` : "Smooths jagged edges"} onClick={() => custom({ msaa: next([1, 2, 4, 8], s.msaa) })} />
+          <Row label="Edge smoothing (FXAA)" value={s.fxaa ? "On" : "Off"} hint="Smooths jagged edges; works where anti-aliasing can't" onClick={() => custom({ fxaa: !s.fxaa })} />
           <Row label="Shader compilation" value={SHADERS.find(([v]) => v === s.shaders)?.[1].split(" (")[0] ?? ""} hint={SHADERS.find(([v]) => v === s.shaders)?.[1].split(" (")[1]?.replace(")", "")} onClick={() => custom({ shaders: next(SHADERS.map(([v]) => v), s.shaders) })} />
           <Row label="V-Sync" value={s.vsync ? "On" : "Off"} hint="Stops tearing; off can lower latency" onClick={() => custom({ vsync: !s.vsync })} />
           <Row label="Prefetch HD textures" value={s.prefetchTextures ? "On" : "Off"} hint="Loads the whole pack into memory at start" onClick={() => custom({ prefetchTextures: !s.prefetchTextures })} />

@@ -305,30 +305,44 @@ button.mini {
 .ctl-dpad [data-btn="down"] { grid-area: down; }
 .ctl-dpad [data-btn="left"] { grid-area: left; }
 .ctl-dpad [data-btn="right"] { grid-area: right; }
+/* Right thumb: A (most used) is biggest and lowest; B sits beside it; Item
+ * is up and to the left, diagonal from A, so resting on A never hits it. */
 .ctl-face {
   justify-self: end;
   display: grid;
-  grid-template-areas: "item item" "b a";
-  gap: 12px;
+  grid-template-columns: auto auto;
+  grid-template-areas: "item ." "b a";
+  column-gap: 18px;
+  row-gap: 26px;
+  align-items: end;
 }
 button.face {
-  width: min(22vw, 22vh, 110px);
+  width: min(22vw, 22vh, 104px);
   aspect-ratio: 1;
   border-radius: 50%;
   font-size: 26px;
   font-weight: 800;
   padding: 0;
 }
-.face.a { grid-area: a; background: #1f8f4e; }
+.face.a {
+  grid-area: a;
+  width: min(28vw, 30vh, 132px);
+  background: #1f8f4e;
+}
+.face.a.auto {
+  box-shadow: 0 0 0 4px #4ade80;
+}
 .face.b { grid-area: b; background: #b8323a; }
 .face.item {
   grid-area: item;
-  justify-self: center;
-  width: auto;
-  aspect-ratio: auto;
-  border-radius: 999px;
-  padding: 10px 28px;
+  width: min(19vw, 20vh, 88px);
+  background: #c98a12;
+  color: #1a1206;
   font-size: 17px;
+}
+button.toggle.on {
+  background: #1f8f4e;
+  border-color: transparent;
 }
 .ctl-hint,
 .ctl-msg {

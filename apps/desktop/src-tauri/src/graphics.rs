@@ -94,7 +94,7 @@ fn pack_status(install: &Install, game_id: &str) -> PackStatus {
 pub fn launch_config(state: &AppState, install: &Install, game_id: Option<&str>) -> Vec<String> {
     let settings = stored(state, game_id).settings();
     let hd = game_id.is_some_and(|g| pack_status(install, g).discoverable);
-    let requested = graphics::requested(&settings, hd);
+    let requested = graphics::requested(&settings, hd, graphics::fxaa_available(&install.sys_dir));
     let overrides = game_id.map(|g| graphics::game_overrides(&install.sys_dir, &install.user_dir, g)).unwrap_or_default();
     let mut args = graphics::dolphin_args(&requested, &overrides);
     let g = &state.graphics;
@@ -158,11 +158,11 @@ pub fn graphics_info(state: State<'_, AppState>) -> GraphicsInfo {
     let (pack, effective, user_dir, textures_folder, dolphin_error) = match (&install, game_id.as_deref()) {
         (Ok(i), Some(g)) => {
             let status = pack_status(i, g);
-            let req = graphics::requested(&settings, status.discoverable);
+            let req = graphics::requested(&settings, status.discoverable, graphics::fxaa_available(&i.sys_dir));
             let eff = graphics::effective(&req, &graphics::game_overrides(&i.sys_dir, &i.user_dir, g));
             (Some(status), eff, Some(i.user_dir.display().to_string()), Some(pack::textures_root(&i.user_dir).display().to_string()), None)
         }
-        (Ok(i), None) => (None, graphics::effective(&graphics::requested(&settings, false), &[]), Some(i.user_dir.display().to_string()), None, None),
+        (Ok(i), None) => (None, graphics::effective(&graphics::requested(&settings, false, graphics::fxaa_available(&i.sys_dir)), &[]), Some(i.user_dir.display().to_string()), None, None),
         (Err(e), _) => (None, vec![], None, None, Some(e.to_string())),
     };
     // Evidence only counts for a pack that's currently switched on.
@@ -172,7 +172,7 @@ pub fn graphics_info(state: State<'_, AppState>) -> GraphicsInfo {
         mario_kart_wii: game_id.as_deref().is_some_and(disc::is_mario_kart_wii),
         running: state.games.running(),
         preset: saved.preset,
-        presets: [Preset::Performance, Preset::Balanced, Preset::Ultra].into_iter().map(|p| (p, p.settings())).collect(),
+        presets: [Preset::Performance, Preset::Balanced, Preset::Ultra, Preset::FourK].into_iter().map(|p| (p, p.settings())).collect(),
         backends: graphics::Backend::available(),
         job: state.graphics.job.lock().unwrap().clone(),
         game_id,

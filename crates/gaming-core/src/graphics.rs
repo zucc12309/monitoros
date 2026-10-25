@@ -18,6 +18,9 @@ pub enum Preset {
     Performance,
     Balanced,
     Ultra,
+    /// 6× native, about 4K. Full speed for one player on an M5 Air with ~2%
+    /// headroom, so it is not meant for split screen.
+    FourK,
     Custom,
 }
 
@@ -93,6 +96,10 @@ pub struct GraphicsSettings {
     pub prefetch_textures: bool,
     pub backend: Backend,
     pub fullscreen: bool,
+    /// Dolphin's bundled FXAA post-processing shader. MSAA is forced off for
+    /// Mario Kart Wii, so this is the edge smoothing that actually applies.
+    #[serde(default)]
+    pub fxaa: bool,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -108,12 +115,13 @@ impl Preset {
         // Metal is Dolphin's native macOS backend. On Windows the right one
         // depends on the GPU and driver, so Dolphin's own choice is kept.
         let backend = if cfg!(target_os = "macos") { Backend::Metal } else { Backend::DolphinDefault };
-        let base = GraphicsSettings { internal_resolution: 3, anisotropy: 16, aspect: Aspect::Wide, msaa: 1, shaders: Shaders::Hybrid, vsync: true, prefetch_textures: false, backend, fullscreen: true };
+        let base = GraphicsSettings { internal_resolution: 3, anisotropy: 16, aspect: Aspect::Wide, msaa: 1, shaders: Shaders::Hybrid, vsync: true, prefetch_textures: false, backend, fullscreen: true, fxaa: true };
         match self {
             // Four-player split screen draws the scene four times.
-            Preset::Performance => GraphicsSettings { internal_resolution: 2, anisotropy: 4, ..base },
+            Preset::Performance => GraphicsSettings { internal_resolution: 2, anisotropy: 4, fxaa: false, ..base },
             Preset::Balanced | Preset::Custom => GraphicsSettings { msaa: 2, ..base },
             Preset::Ultra => GraphicsSettings { internal_resolution: 4, msaa: 4, ..base },
+            Preset::FourK => GraphicsSettings { internal_resolution: 6, msaa: 4, ..base },
         }
     }
 }
@@ -152,9 +160,18 @@ fn b(v: bool) -> String {
     if v { "True" } else { "False" }.into()
 }
 
+/// Name of Dolphin's bundled FXAA shader (Sys/Shaders/FXAA.glsl).
+pub const FXAA_SHADER: &str = "FXAA";
+
+/// Whether this Dolphin ships the FXAA shader.
+pub fn fxaa_available(sys_dir: &Path) -> bool {
+    sys_dir.join("Shaders").join(format!("{FXAA_SHADER}.glsl")).is_file()
+}
+
 /// The config values a launch requests. `hd_textures` is whether the
-/// MonitorOS-managed texture pack is installed and switched on.
-pub fn requested(s: &GraphicsSettings, hd_textures: bool) -> Vec<Requested> {
+/// MonitorOS-managed texture pack is installed and switched on; `fxaa` is
+/// whether Dolphin ships the FXAA shader.
+pub fn requested(s: &GraphicsSettings, hd_textures: bool, fxaa: bool) -> Vec<Requested> {
     let r = |label, system, section, key, value: String| Requested { label, system, section, key, value };
     // AnisotropicFilteringMode: Force1x=0 … Force16x=4.
     let af = s.anisotropy.trailing_zeros().to_string();
@@ -177,6 +194,10 @@ pub fn requested(s: &GraphicsSettings, hd_textures: bool) -> Vec<Requested> {
         r("V-Sync", "Graphics", "Hardware", "VSync", b(s.vsync)),
         r("Full screen", "Dolphin", "Display", "Fullscreen", b(s.fullscreen)),
     ];
+    // Off leaves whatever shader the user picked in Dolphin.
+    if s.fxaa && fxaa {
+        out.push(r("Edge smoothing (FXAA)", "Graphics", "Enhancements", "PostProcessingShader", FXAA_SHADER.into()));
+    }
     if let Some(name) = s.backend.config_name() {
         out.push(r("Graphics backend", "Dolphin", "Core", "GFXBackend", name.into()));
     }
@@ -200,6 +221,16 @@ pub struct Override {
 
 /// Game INI sections → config locations (ConfigLoaders/GameConfigLoader.cpp).
 fn ini_section(name: &str) -> Option<(&'static str, &'static str)> {
+    // Newer game INIs may also name the location directly: [Graphics.Enhancements].
+    if let Some((system, section)) = name.split_once('.') {
+        let system = match system {
+            "Graphics" => "Graphics",
+            "Dolphin" => "Dolphin",
+            _ => return None,
+        };
+        let section: &'static str = ["Settings", "Enhancements", "Hardware", "Hacks", "Core", "Display", "Interface"].into_iter().find(|s| *s == section)?;
+        return Some((system, section));
+    }
     Some(match name {
         "Video_Settings" => ("Graphics", "Settings"),
         "Video_Enhancements" => ("Graphics", "Enhancements"),
@@ -290,25 +321,32 @@ mod tests {
 
     #[test]
     fn presets_map_to_real_dolphin_values() {
-        let p = requested(&Preset::Performance.settings(), true);
+        let p = requested(&Preset::Performance.settings(), true, true);
         assert_eq!(value(&p, "InternalResolution").as_deref(), Some("2"));
         assert_eq!(value(&p, "MaxAnisotropy").as_deref(), Some("2")); // Force4x
-        let bal = requested(&Preset::Balanced.settings(), true);
+        let bal = requested(&Preset::Balanced.settings(), true, true);
         assert_eq!(value(&bal, "InternalResolution").as_deref(), Some("3"));
         assert_eq!(value(&bal, "MaxAnisotropy").as_deref(), Some("4")); // Force16x
         assert_eq!(value(&bal, "AspectRatio").as_deref(), Some("1")); // ForceWide
         assert_eq!(value(&bal, "ShaderCompilationMode").as_deref(), Some("2")); // async ubershaders
         assert_eq!(value(&bal, "HiresTextures").as_deref(), Some("True"));
         assert_eq!(value(&bal, "CacheHiresTextures").as_deref(), Some("False"));
-        let ultra = requested(&Preset::Ultra.settings(), true);
+        let ultra = requested(&Preset::Ultra.settings(), true, true);
         assert_eq!(value(&ultra, "InternalResolution").as_deref(), Some("4"));
+        let four_k = requested(&Preset::FourK.settings(), true, true);
+        assert_eq!(value(&four_k, "InternalResolution").as_deref(), Some("6"));
+        assert_eq!(value(&four_k, "PostProcessingShader").as_deref(), Some("FXAA"));
+        assert_eq!(value(&bal, "PostProcessingShader").as_deref(), Some("FXAA"));
+        // Performance skips FXAA, and a Dolphin without the shader never gets asked for it.
+        assert_eq!(value(&p, "PostProcessingShader"), None);
+        assert_eq!(value(&requested(&Preset::Ultra.settings(), true, false), "PostProcessingShader"), None);
         if cfg!(target_os = "macos") {
             assert_eq!(value(&bal, "GFXBackend").as_deref(), Some("Metal"));
         } else {
             assert_eq!(value(&bal, "GFXBackend"), None);
         }
         // No pack: textures aren't touched at all.
-        assert_eq!(value(&requested(&Preset::Balanced.settings(), false), "HiresTextures"), None);
+        assert_eq!(value(&requested(&Preset::Balanced.settings(), false, true), "HiresTextures"), None);
         // Nothing about speed, timing or input.
         for r in &ultra {
             assert!(!["EmulationSpeed", "CPUThread", "SyncGPU", "Overclock", "OverclockEnable"].contains(&r.key));
@@ -333,7 +371,7 @@ mod tests {
         let ov = parse_game_ini(MKW_SYS, "Dolphin's built-in settings (RMC.ini)");
         assert!(ov.iter().any(|o| o.key == "MSAA" && o.value == "0" && o.section == "Settings"));
         assert!(!ov.iter().any(|o| o.key == "StereoConvergence")); // section we don't map
-        let req = requested(&Preset::Ultra.settings(), true);
+        let req = requested(&Preset::Ultra.settings(), true, true);
         let eff = effective(&req, &ov);
         let aa = eff.iter().find(|e| e.label == "Anti-aliasing").unwrap();
         assert_eq!((aa.requested.as_str(), aa.effective.as_str()), ("4", "0"));
@@ -345,6 +383,17 @@ mod tests {
     }
 
     #[test]
+    fn dotted_sections_and_unmapped_ones() {
+        // Dolphin ignores a bare [Enhancements] section (RMCP01.ini has one), so FXAA isn't blocked.
+        let ov = parse_game_ini("[Enhancements]\nPostProcessingShader = \n[Graphics.Enhancements]\nMaxAnisotropy = 0\n", "x");
+        assert_eq!(ov.len(), 1);
+        assert_eq!((ov[0].section.as_str(), ov[0].key.as_str()), ("Enhancements", "MaxAnisotropy"));
+        // Settings saved before FXAA existed still load.
+        let old = r#"{"internalResolution":3,"anisotropy":16,"aspect":"wide","msaa":2,"shaders":"hybrid","vsync":true,"prefetchTextures":false,"backend":"dolphinDefault","fullscreen":true}"#;
+        assert!(!serde_json::from_str::<GraphicsSettings>(old).unwrap().fxaa);
+    }
+
+    #[test]
     fn later_files_beat_earlier_ones() {
         let dir = std::env::temp_dir().join(format!("monitoros-gfx-{}", std::process::id()));
         let (sys, user) = (dir.join("Sys"), dir.join("User"));
@@ -353,7 +402,7 @@ mod tests {
         std::fs::write(sys.join("GameSettings/RMC.ini"), MKW_SYS).unwrap();
         std::fs::write(user.join("GameSettings/RMCP01.ini"), "[Video_Settings]\nMSAA = 4\nInternalResolution = 5\n").unwrap();
         let ov = game_overrides(&sys, &user, "RMCP01");
-        let eff = effective(&requested(&Preset::Ultra.settings(), false), &ov);
+        let eff = effective(&requested(&Preset::Ultra.settings(), false, true), &ov);
         let get = |l: &str| eff.iter().find(|e| e.label == l).unwrap().clone();
         assert_eq!(get("Anti-aliasing").overridden_by, None); // user file sets 4, same as requested
         assert_eq!(get("Internal resolution").effective, "5");

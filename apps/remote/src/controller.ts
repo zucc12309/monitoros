@@ -18,13 +18,15 @@ const PLAYER_COLOURS = ["#3b82f6", "#ef4444", "#22c55e", "#eab308"];
 
 let host: ControllerHost | null = null;
 let buttons = 0;
+/** Holds A for the player during races (menus need real taps, so it's opt-in). */
+let autoGas = false;
 let stick = { x: 0, y: 0 };
 let lastSent = "";
 let timer = 0;
 
 function snapshot(): RemoteCommand {
   const r = (v: number) => Math.round(v * 100) / 100;
-  return { type: "pad", buttons, lx: r(stick.x), ly: r(stick.y) };
+  return { type: "pad", buttons: buttons | (autoGas ? PAD_BUTTONS.cross : 0), lx: r(stick.x), ly: r(stick.y) };
 }
 
 /** Send the current state now, or as soon as the rate budget allows. */
@@ -41,7 +43,19 @@ function push() {
   }, SEND_INTERVAL_MS);
 }
 
+function setAutoGas(on: boolean) {
+  autoGas = on;
+  const t = document.getElementById("ctl-auto");
+  if (t) {
+    t.textContent = `Auto-accelerate: ${on ? "On" : "Off"}`;
+    t.classList.toggle("on", on);
+  }
+  document.querySelector('[data-btn="cross"]')?.classList.toggle("auto", on);
+  push();
+}
+
 function releaseAll() {
+  autoGas = false;
   buttons = 0;
   stick = { x: 0, y: 0 };
   push();
@@ -50,6 +64,7 @@ function releaseAll() {
 export function renderController(root: HTMLElement, h: ControllerHost) {
   host = h;
   buttons = 0;
+  autoGas = false;
   stick = { x: 0, y: 0 };
   lastSent = "";
   root.innerHTML = `
@@ -57,6 +72,7 @@ export function renderController(root: HTMLElement, h: ControllerHost) {
       <header class="ctl-top">
         <button id="ctl-exit" class="pill">‹ Remote</button>
         <span id="ctl-player" class="ctl-player">Joining…</span>
+        <button id="ctl-auto" class="mini toggle">Auto-accelerate: Off</button>
         <span class="ctl-small">
           <button data-btn="share" class="mini">−</button>
           <button data-btn="ps" class="mini">Home</button>
@@ -72,12 +88,12 @@ export function renderController(root: HTMLElement, h: ControllerHost) {
           <button data-btn="down">▼</button>
         </div>
         <div class="ctl-face">
-          <button data-btn="r1" class="face item">Item</button>
-          <button data-btn="circle" class="face b">B</button>
-          <button data-btn="cross" class="face a">A</button>
+          <button data-btn="r1" class="face item" aria-label="Use item">Item</button>
+          <button data-btn="circle" class="face b" aria-label="B: drift and brake">B</button>
+          <button data-btn="cross" class="face a" aria-label="A: accelerate">A</button>
         </div>
       </div>
-      <p class="ctl-hint">Hold the phone sideways · Stick steers · A go · B drift · Item use</p>
+      <p class="ctl-hint">Hold the phone sideways · Stick steers · A go · B drift · Item (top) uses items</p>
       <p id="ctl-msg" class="ctl-msg"></p>
     </section>`;
 
@@ -103,6 +119,7 @@ export function renderController(root: HTMLElement, h: ControllerHost) {
   });
 
   bindStick(root.querySelector<HTMLElement>("#stick")!, root.querySelector<HTMLElement>("#knob")!);
+  root.querySelector<HTMLButtonElement>("#ctl-auto")!.onclick = () => setAutoGas(!autoGas);
 
   root.querySelector<HTMLButtonElement>("#ctl-exit")!.onclick = () => {
     releaseAll();
@@ -174,7 +191,10 @@ export function controllerActive() {
 
 /** Phone going to the background: let go of everything first. */
 export function suspend() {
-  if (host) releaseAll();
+  if (host) {
+    releaseAll();
+    setAutoGas(false);
+  }
 }
 
 export function showPlayers(players: GamePlayer[] | undefined, error?: string) {
